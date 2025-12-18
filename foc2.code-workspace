@@ -1,0 +1,198 @@
+{
+	"folders": [
+        {
+            "path": "."
+        }
+    ],
+	"settings": {
+        "ninja": "ninja",
+
+        "cmake.configureOnOpen": false,
+
+        "armToolchainPath": "${env:GNUARMEMB_TOOLCHAIN_PATH}",
+
+        // The number of spaces a tab is equal to. This setting is overridden
+        // based on the file contents when `editor.detectIndentation` is true.
+        "editor.tabSize": 4,
+
+        // Insert spaces when pressing Tab. This setting is overriden
+        // based on the file contents when `editor.detectIndentation` is true.
+        "editor.insertSpaces": true,
+
+        // When opening a file, `editor.tabSize` and `editor.insertSpaces`
+        // will be detected based on the file contents. Set to false to keep
+        // the values you've explicitly set, above.
+        "editor.detectIndentation": false,
+        "editor.rulers": [80, 120],
+        "editor.cursorBlinking": "smooth",
+
+        "files.trimFinalNewlines": true,
+        "files.trimTrailingWhitespace": true,
+        "files.autoSave": "afterDelay",
+        "files.autoSaveDelay": 3000,
+
+        "editor.formatOnSave": false,
+        "editor.codeActionsOnSave": [],
+
+        "editor.renderWhitespace": "all",
+        "files.watcherExclude": {
+            "**/.git/objects/**": true,
+            "**/.git/subtree-cache/**": true,
+            "**/node_modules/**": true,
+            "**/tmp/**": true,
+            "**/.git": true,
+            "**/.svn": true,
+            "**/.hg": true,
+            "**/CVS": true,
+            "**/.DS_Store": true,
+            "**/node_modules": true,
+            "**/bower_components": true,
+            "**/dist/**": true,
+            "**/log/**": true,
+            "**/logs/**": true,
+            "**/.fdk/**": true,
+            "**/.west/**": true,
+            "**/.vscode/**": true,
+            "${workspaceRoot}/../zephyr-ws/**": true,
+            "**/.history/**": true
+        },
+        "files.exclude": {
+            "**/.git/objects/**": true,
+            "**/.git/subtree-cache/**": true,
+            "**/node_modules/**": true,
+            "**/tmp/**": true,
+            "**/.git": true,
+            "**/.svn": true,
+            "**/.hg": true,
+            "**/CVS": true,
+            "**/.DS_Store": true,
+            "**/node_modules": true,
+            "**/bower_components": true,
+            "**/dist/**": true,
+            "**/log/**": true,
+            "**/.fdk/**": true,
+            "**/.west/**": true,
+            "**/.history/**": true
+        },
+        "search.exclude": {
+            "**/.git/objects/**": true,
+            "**/.git/subtree-cache/**": true,
+            "**/node_modules/**": true,
+            "**/tmp/**": true,
+            "**/.git": true,
+            "**/.svn": true,
+            "**/.hg": true,
+            "**/CVS": true,
+            "**/.DS_Store": true,
+            "**/node_modules": true,
+            "**/bower_components": true,
+            "**/dist/**": true,
+            "**/log/**": true,
+            "**/.west/**": true,
+            "**/.history/**": true
+        },
+        "editor.renderControlCharacters": false,
+
+        // Terminal settings for proper ANSI/VT100 support
+        "terminal.integrated.enablePersistentSessions": false,
+        "terminal.integrated.localEchoEnabled": "off",
+        "terminal.integrated.localEchoLatencyThreshold": -1,
+        "editor.fontSize": 16
+    },
+	"tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Configure CMake",
+                "type": "shell",
+                "command": "cmake",
+                "args": [
+                    "-G", "Ninja",
+                    "-DCMAKE_BUILD_TYPE=Debug",
+                    "-S", ".",
+                    "-B", "build"
+                ],
+                "group": "build",
+                "problemMatcher": []
+            },
+            {
+                "label": "BuildFW",
+                "type": "shell",
+                "command": "${config:ninja}",
+                "args": [],
+                "options": {
+                    "cwd": "${workspaceFolder}/build"
+                },
+                "group": {
+                    "kind": "build",
+                    "isDefault": true
+                },
+                "dependsOn": "Configure CMake",
+                "problemMatcher": [ "$gcc" ]
+            },
+            {
+                "label": "Clean Build",
+                "type": "shell",
+                "command": "${config:ninja}",
+                "args": ["clean"],
+                "options": {
+                    "cwd": "${workspaceFolder}/build"
+                },
+                "group": "build",
+                "problemMatcher": []
+            },
+            {
+                "label": "Serial Monitor",
+                "type": "shell",
+                "command": "python -m serial.tools.miniterm --eol LF --filter direct /dev/ttyUSB0 115200",
+                "isBackground": true,
+                "problemMatcher": [],
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "dedicated"
+                },
+            },
+            {
+                "label": "Serial Monitor (Raw)",
+                "type": "shell",
+                "command": "python -m serial.tools.miniterm --raw /dev/ttyUSB0 115200",
+                "isBackground": true,
+                "problemMatcher": [],
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "dedicated"
+                },
+            }
+		]
+	},
+    "launch": {
+        "configurations": [
+            {
+                "name": "RunFW",
+                "cwd": "${workspaceFolder}",
+                "executable": "${workspaceFolder}/build/foc2.elf",
+                "request": "launch",
+                "type": "cortex-debug",
+                "runToEntryPoint": "main",
+                "servertype": "jlink",
+                "serverpath": "JLinkGDBServerCLExe",
+                "device": "STM32G431CB",
+                "svdFile": "STM32G431.svd",
+                "interface": "swd",
+                "armToolchainPath": "${config:armToolchainPath}/arm-zephyr-eabi/bin/",
+                "toolchainPrefix": "arm-zephyr-eabi",
+                "showDevDebugOutput": "parsed",
+                "liveWatch": {
+                    "enabled": true,
+                    "samplesPerSecond": 4
+                },
+                "preLaunchTask": "BuildFW",
+                "serverArgs": ["-speed", "4000"]
+            },
+        ]
+    }
+}
