@@ -5,9 +5,10 @@
 extern "C" {
 #endif
 
+#include "main.h"
 #include <stdint.h>
 
-void oled_init(void);
+void oled_init(I2C_HandleTypeDef *hi2c);
 void oled_clear(void);
 void oled_write(const char *str, uint8_t x, uint8_t y);
 void oled_update(void);

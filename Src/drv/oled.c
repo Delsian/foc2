@@ -7,7 +7,7 @@
 #define OLED_HEIGHT         64
 #define OLED_PAGES          (OLED_HEIGHT / 8)
 
-extern I2C_HandleTypeDef hi2c1;
+static I2C_HandleTypeDef *oled_hi2c = NULL;
 
 static uint8_t oled_buffer[OLED_WIDTH * OLED_PAGES];
 static uint8_t oled_x = 0;
@@ -62,14 +62,16 @@ static int oled_send(uint8_t ctrl, const uint8_t *data, uint16_t len)
     uint8_t buf[len + 1];
     buf[0] = ctrl;
     memcpy(&buf[1], data, len);
-    return HAL_I2C_Master_Transmit(&hi2c1, OLED_I2C_ADDR, buf, len + 1, 100);
+    return HAL_I2C_Master_Transmit(oled_hi2c, OLED_I2C_ADDR, buf, len + 1, 100);
 }
 
-void oled_init(void)
+void oled_init(I2C_HandleTypeDef *hi2c)
 {
     if (oled_initialized) {
         return;
     }
+
+    oled_hi2c = hi2c;
 
     HAL_Delay(100);
 

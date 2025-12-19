@@ -2,6 +2,7 @@
 #include "usb_device.h"
 #include "drv/oled.h"
 #include "drv/i2c_scan.h"
+#include "drv/uart_in.h"
 #include <stdio.h>
 
 ADC_HandleTypeDef hadc2;
@@ -30,7 +31,8 @@ static void init(void)
     MX_USART2_UART_Init();
     MX_USB_Device_Init();
 
-    oled_init();
+    oled_init(&hi2c1);
+    uart_in_init(&huart2);
 }
 
 int main(void)
@@ -48,6 +50,11 @@ int main(void)
     oled_update();
 
     while (1) {
+        if (uart_in_available() > 0) {
+            uint8_t ch;
+            uart_in_getchar(&ch);
+            printf("Received char: %c (0x%02X)\n", ch, ch);
+        }
     }
 }
 
