@@ -3,6 +3,7 @@
 #include "drv/oled.h"
 #include "drv/i2c_scan.h"
 #include "drv/uart_in.h"
+#include "drv/adc_dma.h"
 #include <stdio.h>
 
 ADC_HandleTypeDef hadc2;
@@ -13,6 +14,8 @@ I2C_HandleTypeDef hi2c2;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
+
+static MainCommands command = 0;
 
 static void init(void)
 {
@@ -31,12 +34,16 @@ static void init(void)
     MX_USART2_UART_Init();
     MX_USB_Device_Init();
 
+    adc_dma_init(&hadc2, &hdma_adc2, &htim2);
+
     oled_init(&hi2c1);
     uart_in_init(&huart2);
 }
 
 int main(void)
 {
+    static uint32_t cnt = 0;
+
     init();
 
     printf("hello\n");
@@ -49,11 +56,35 @@ int main(void)
     oled_write("6677889", 0, 4);
     oled_update();
 
+    adc_dma_start();
+
     while (1) {
         if (uart_in_available() > 0) {
             uint8_t ch;
             uart_in_getchar(&ch);
             printf("Received char: %c (0x%02X)\n", ch, ch);
+        }
+
+        if (command & CMD_RESET) {
+            command &= ~CMD_RESET;
+            NVIC_SystemReset();
+        }
+
+        if (command & CMD_ADC) {
+            command &= ~CMD_ADC;
+
+            // Handle ADC command
+        }
+
+        if (cnt++ >= 350000) {
+            cnt = 0;
+            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
+            uint16_t adc_values[5];
+            adc_dma_get_all_channels(adc_values, 5);
+            printf("ADC Values: %u %u %u %u %u\n",
+                   adc_values[0], adc_values[1],
+                   adc_values[2], adc_values[3],
+                   adc_values[4]);
         }
     }
 }

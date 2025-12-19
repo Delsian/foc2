@@ -32,6 +32,13 @@ void MX_TIM3_Init(void);
 void MX_UCPD1_Init(void);
 void MX_USART2_UART_Init(void);
 
+
+typedef enum {
+    CMD_RESET = 0x01,
+    CMD_ADC = 0x02,
+    CMD_PWM = 0x04,
+} MainCommands;
+
 #ifdef __cplusplus
 }
 #endif
