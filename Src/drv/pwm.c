@@ -72,9 +72,46 @@ int pwm_init(struct pwm_device *dev)
 {
 	const struct pwm_config *config = dev->config;
 	struct pwm_data *data = dev->data;
+	TIM_OC_InitTypeDef sConfigOC = {0};
 
 	if (!config->htim) {
 		printf("%s: Timer handle is NULL\n", dev->name);
+		return -1;
+	}
+
+	/* Configure timer for PWM at 20kHz (if not TIM2, which is used for ADC trigger) */
+	/* TIM2 is already configured by adc_dma_init, so we skip base init for TIM2 */
+	if (config->htim->Instance != TIM2) {
+		config->htim->Init.Prescaler = 0;
+		config->htim->Init.CounterMode = TIM_COUNTERMODE_UP;
+		config->htim->Init.Period = 8499;  /* 20 kHz at 170 MHz */
+		config->htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+		config->htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+
+		if (HAL_TIM_PWM_Init(config->htim) != HAL_OK) {
+			printf("%s: Timer PWM init failed\n", dev->name);
+			return -1;
+		}
+	}
+
+	/* Configure PWM channels */
+	sConfigOC.OCMode = TIM_OCMODE_PWM1;
+	sConfigOC.Pulse = 0;
+	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+
+	if (HAL_TIM_PWM_ConfigChannel(config->htim, &sConfigOC, config->channel_a) != HAL_OK) {
+		printf("%s: Failed to configure PWM channel A\n", dev->name);
+		return -1;
+	}
+
+	if (HAL_TIM_PWM_ConfigChannel(config->htim, &sConfigOC, config->channel_b) != HAL_OK) {
+		printf("%s: Failed to configure PWM channel B\n", dev->name);
+		return -1;
+	}
+
+	if (HAL_TIM_PWM_ConfigChannel(config->htim, &sConfigOC, config->channel_c) != HAL_OK) {
+		printf("%s: Failed to configure PWM channel C\n", dev->name);
 		return -1;
 	}
 

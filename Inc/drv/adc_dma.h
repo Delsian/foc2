@@ -24,6 +24,7 @@ extern "C" {
 
 #define ADC_DMA_NUM_CHANNELS  5    /* Number of ADC channels to read */
 #define ADC_VREF_MV           3300 /* ADC reference voltage in millivolts */
+#define ADC_OVERSAMPLING_RATIO 4   /* Hardware oversampling: 4x averages */
 
 /**
  * @brief Callback function type for ADC conversion complete

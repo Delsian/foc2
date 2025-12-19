@@ -4,6 +4,7 @@
 #include "drv/i2c_scan.h"
 #include "drv/uart_in.h"
 #include "drv/adc_dma.h"
+#include "drv/pwm.h"
 #include <stdio.h>
 
 ADC_HandleTypeDef hadc2;
@@ -16,6 +17,7 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 
 static MainCommands command = 0;
+static struct pwm_device *dev[2];
 
 static void init(void)
 {
@@ -40,11 +42,32 @@ static void init(void)
     uart_in_init(&huart2);
 }
 
+static void pwm_init_devices(void)
+{
+    dev[0] = pwm_get_device("pwm_motor0");
+    dev[1] = pwm_get_device("pwm_motor1");
+
+    for (int i = 0; i < 2; i++) {
+        if (dev[i]) {
+            pwm_init(dev[i]);
+        }
+    }
+}
+
 int main(void)
 {
     static uint32_t cnt = 0;
 
     init();
+    pwm_init_devices();
+
+    /* Start PWM on both motors */
+    pwm_start(dev[0]);
+    pwm_start(dev[1]);
+
+    /* Set initial PWM vectors */
+    pwm_set_vector(dev[0], 0.0f, 5.0f);
+    pwm_set_vector(dev[1], 120.0f, 5.0f);
 
     printf("hello\n");
 

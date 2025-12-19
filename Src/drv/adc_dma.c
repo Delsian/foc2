@@ -2,6 +2,17 @@
  * Copyright (c) 2025 FOC2 Project
  *
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * ADC Timing Analysis (20 kHz trigger):
+ * - ADC clock: 42.5 MHz (PCLK/4)
+ * - Sampling time: 47.5 cycles
+ * - Conversion time: 12.5 cycles (12-bit)
+ * - Time per channel: 60 cycles × 23.5ns = 1.41 µs
+ * - Time for 5 channels: 7.05 µs
+ * - Hardware oversampling: 4x (automatic averaging)
+ * - Total conversion time with oversampling: ~28 µs
+ * - Time between 20kHz triggers: 50 µs
+ * - Margin: 22 µs (44% headroom)
  */
 
 #include "drv/adc_dma.h"
@@ -59,7 +70,13 @@ int adc_dma_init(ADC_HandleTypeDef *hadc, DMA_HandleTypeDef *hdma, TIM_HandleTyp
 	adc_handle->Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
 	adc_handle->Init.DMAContinuousRequests = ENABLE;
 	adc_handle->Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-	adc_handle->Init.OversamplingMode = DISABLE;
+
+	/* Enable hardware oversampling for noise reduction */
+	adc_handle->Init.OversamplingMode = ENABLE;
+	adc_handle->Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_4;  /* 4x oversampling */
+	adc_handle->Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_2;  /* Divide by 4 (>>2) */
+	adc_handle->Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
+	adc_handle->Init.Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
 
 	if (HAL_ADC_Init(adc_handle) != HAL_OK) {
 		printf("adc_dma_init: ADC init failed\n");
