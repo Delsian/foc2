@@ -4,6 +4,7 @@
 #include "drv/i2c_scan.h"
 #include "drv/uart_in.h"
 #include "drv/adc_dma.h"
+#include "drv/can.h"
 #include "drv/pwm.h"
 #include "drv/mt6701.h"
 #include "foc.h"
@@ -48,11 +49,13 @@ static void init(void)
     MX_UCPD1_Init();
     MX_USART2_UART_Init();
     MX_USB_Device_Init();
+    MX_FDCAN1_Init();
 
     adc_dma_init(&hadc2, &hdma_adc2, &htim2);
 
     oled_init(&hi2c1);
     uart_in_init(&huart2);
+    can_init(&hfdcan1);
 
     /* Initialize MT6701 encoders */
     mt6701_init(&encoder_motor0, &hi2c2, MT6701_I2C_ADDR, "encoder_motor0");
@@ -361,8 +364,8 @@ int main(void)
             HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
 
             /* ADC testing */
-            // uint16_t adc_values[5];
-            // adc_dma_get_all_channels(adc_values, 5);
+            //uint16_t adc_values[5];
+            //adc_dma_get_all_channels(adc_values, 5);
             // printf("ADC Values: %u %u %u %u %u\n",
             //        adc_values[0], adc_values[1],
             //        adc_values[2], adc_values[3],
@@ -373,6 +376,12 @@ int main(void)
             // mt6701_read_angle_deg(&encoder_motor0, &angle0);
             // mt6701_read_angle_deg(&encoder_motor1, &angle1);
             // printf("Encoder angles: motor0=%d deg, motor1=%d deg\n", (int)angle0, (int)angle1);
+
+            /* Send CAN frame with ADC1 value */
+            // uint8_t can_data[2];
+            // can_data[0] = (adc_values[0] >> 8) & 0xFF;  /* ADC1 high byte */
+            // can_data[1] = adc_values[0] & 0xFF;         /* ADC1 low byte */
+            // can_transmit(0x100, can_data, 2);
 
         }
 
