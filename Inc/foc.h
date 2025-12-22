@@ -1,0 +1,129 @@
+/*
+ * Copyright (c) 2025 FOC2 Project
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#ifndef FOC_H
+#define FOC_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "main.h"
+#include "drv/pwm.h"
+#include <stdbool.h>
+
+/**
+ * @brief FOC motor control
+ *
+ * This module provides high-level motor control functions including
+ * velocity control for BLDC motors.
+ */
+
+/**
+ * @brief Velocity control mode
+ */
+enum foc_velocity_mode {
+	FOC_VELOCITY_DISABLED = 0,   /* Velocity control disabled */
+	FOC_VELOCITY_OPEN_LOOP,      /* Open-loop velocity control */
+	FOC_VELOCITY_CLOSED_LOOP,    /* Closed-loop with encoder feedback */
+};
+
+/**
+ * @brief Velocity control configuration
+ */
+struct foc_velocity_config {
+	enum foc_velocity_mode mode; /* Control mode */
+	float target_rpm;            /* Target rotational speed in RPM */
+	float update_rate_hz;        /* Update rate in Hz */
+	float acceleration;          /* Acceleration limit in RPM/s */
+	uint8_t pole_pairs;          /* Number of motor pole pairs */
+};
+
+/**
+ * @brief FOC motor instance
+ */
+struct foc_motor {
+	const char *name;
+	struct pwm_device *pwm_dev;
+
+	/* Velocity control */
+	struct foc_velocity_config velocity_cfg;
+	float current_rpm;           /* Current velocity in RPM */
+	float electrical_angle;      /* Current electrical angle in degrees */
+	float amplitude;             /* PWM amplitude/magnitude (0-100%) */
+};
+
+/**
+ * @brief Enable velocity control mode
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param mode Velocity control mode
+ * @param target_rpm Target velocity in RPM
+ * @param amplitude PWM amplitude/magnitude (0-100%)
+ * @param update_rate_hz Control loop update rate in Hz
+ * @param pole_pairs Number of motor pole pairs
+ * @return 0 on success, negative value on failure
+ */
+int foc_velocity_enable(struct foc_motor *motor, enum foc_velocity_mode mode,
+                       float target_rpm, float amplitude, float update_rate_hz,
+                       uint8_t pole_pairs);
+
+/**
+ * @brief Disable velocity control mode
+ *
+ * @param motor Pointer to FOC motor instance
+ * @return 0 on success, negative value on failure
+ */
+int foc_velocity_disable(struct foc_motor *motor);
+
+/**
+ * @brief Set target velocity
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param target_rpm Target velocity in RPM
+ * @return 0 on success, negative value on failure
+ */
+int foc_velocity_set_target(struct foc_motor *motor, float target_rpm);
+
+/**
+ * @brief Get current velocity
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param rpm Pointer to store current velocity in RPM
+ * @return 0 on success, negative value on failure
+ */
+int foc_velocity_get_current(struct foc_motor *motor, float *rpm);
+
+/**
+ * @brief Update velocity control for a motor
+ *
+ * This function should be called periodically from the control loop
+ *
+ * @param motor Pointer to FOC motor instance
+ */
+void foc_velocity_update(struct foc_motor *motor);
+
+/**
+ * @brief Get FOC motor instance by name
+ *
+ * @param name Motor name (e.g., "motor0", "motor1")
+ * @return Pointer to motor instance or NULL if not found
+ */
+struct foc_motor *foc_get_motor(const char *name);
+
+/**
+ * @brief Periodical FOC task for all motors
+ *
+ * This function updates velocity control for all motors and should be
+ * called from a timer interrupt or periodically from the main loop.
+ */
+void foc_task(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* FOC_H */

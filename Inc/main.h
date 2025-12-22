@@ -37,7 +37,8 @@ void MX_USART2_UART_Init(void);
 typedef enum {
     CMD_RESET = 0x01,
     CMD_ADC = 0x02,
-    CMD_PWM = 0x04, /* Periodical PWM task */
+    CMD_PWM = 0x04,  /* Periodical PWM task */
+    CMD_OLED = 0x08, /* Periodical OLED update */
 } MainCommands;
 
 void set_event(MainCommands cmd);

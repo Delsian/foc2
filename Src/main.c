@@ -6,6 +6,7 @@
 #include "drv/adc_dma.h"
 #include "drv/pwm.h"
 #include "drv/mt6701.h"
+#include "foc.h"
 #include <stdio.h>
 
 ADC_HandleTypeDef hadc2;
@@ -19,9 +20,16 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 static MainCommands command = 0;
-static struct pwm_device *dev[2];
+static struct pwm_device *pwm_dev[2];
+static struct foc_motor *motor[2];
 static mt6701_t encoder_motor0;
 static mt6701_t encoder_motor1;
+
+/* Motor control state variables (accessible to oled_task) */
+static float angle = 0.0f;
+static float target_rpm = 0.0f;
+static float amplitude = 5.0f;  /* Start with low amplitude to prevent overcurrent */
+static bool velocity_mode = false;
 
 static void init(void)
 {
@@ -53,14 +61,18 @@ static void init(void)
 
 static void pwm_init_devices(void)
 {
-    dev[0] = pwm_get_device("pwm_motor0");
-    dev[1] = pwm_get_device("pwm_motor1");
+    pwm_dev[0] = pwm_get_device("pwm_motor0");
+    pwm_dev[1] = pwm_get_device("pwm_motor1");
 
     for (int i = 0; i < 2; i++) {
-        if (dev[i]) {
-            pwm_init(dev[i]);
+        if (pwm_dev[i]) {
+            pwm_init(pwm_dev[i]);
         }
     }
+
+    /* Initialize FOC motor instances */
+    motor[0] = foc_get_motor("motor0");
+    motor[1] = foc_get_motor("motor1");
 }
 
 void set_event(MainCommands cmd)
@@ -69,31 +81,90 @@ void set_event(MainCommands cmd)
 }
 
 /**
+ * @brief OLED display update task
+ * Updates OLED with current motor status information
+ */
+static void oled_task(void)
+{
+    static char line_buf[16];
+    static bool velocity_mode_cached = false;
+    static float angle_cached = 0.0f;
+    static float amplitude_cached = 0.0f;
+    static float target_rpm_cached = 0.0f;
+    static float current_rpm0_cached = 0.0f;
+
+    /* Check if display needs update (values changed) */
+    bool needs_update = false;
+
+    if (velocity_mode != velocity_mode_cached ||
+        angle != angle_cached ||
+        amplitude != amplitude_cached ||
+        target_rpm != target_rpm_cached) {
+        needs_update = true;
+        velocity_mode_cached = velocity_mode;
+        angle_cached = angle;
+        amplitude_cached = amplitude;
+        target_rpm_cached = target_rpm;
+    }
+
+    if (velocity_mode) {
+        float rpm0;
+        foc_velocity_get_current(motor[0], &rpm0);
+        if (rpm0 != current_rpm0_cached) {
+            needs_update = true;
+            current_rpm0_cached = rpm0;
+        }
+    }
+
+    if (!needs_update) {
+        return;  /* No changes, skip update */
+    }
+
+    /* Line 0: Amplitude with custom formatting */
+    snprintf(line_buf, sizeof(line_buf), "%d", (int)amplitude);
+    oled_write(line_buf, 0, 0);
+
+    /* Line 2: Angle or RPM with icon */
+    if (velocity_mode) {
+        snprintf(line_buf, sizeof(line_buf), "R%d", (int)current_rpm0_cached);
+    } else {
+        snprintf(line_buf, sizeof(line_buf), "A%d", (int)angle);
+    }
+    oled_write(line_buf, 0, 2);
+
+    oled_update();
+}
+
+/**
  * @brief Timer period elapsed callback
  * Called from TIM4 interrupt at 1kHz
  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
+    static uint16_t oled_counter = 0;
+
     if (htim->Instance == TIM4) {
-        /* Set event to trigger PWM velocity control update */
+        /* Set event to trigger PWM velocity control update at 1kHz */
         set_event(CMD_PWM);
+
+        /* Trigger OLED update at 10 Hz (every 100ms) */
+        if (++oled_counter >= 100) {
+            oled_counter = 0;
+            set_event(CMD_OLED);
+        }
     }
 }
 
 int main(void)
 {
     static uint32_t cnt = 0;
-    float angle = 0.0f;
-    float target_rpm = 0.0f;
-    float amplitude = 5.0f;  /* Start with low amplitude to prevent overcurrent */
-    bool velocity_mode = false;
 
     init();
     pwm_init_devices();
 
     /* Start PWM on both motors */
-    pwm_start(dev[0]);
-    pwm_start(dev[1]);
+    pwm_start(pwm_dev[0]);
+    pwm_start(pwm_dev[1]);
 
     /* Start TIM4 interrupt for velocity control at 1kHz */
     HAL_TIM_Base_Start_IT(&htim4);
@@ -110,12 +181,10 @@ int main(void)
     i2c_scan(&hi2c1, "I2C1");
     i2c_scan(&hi2c2, "I2C2");
 
-    oled_write("1234567", 0, 0);
-    oled_write("6677889", 0, 2);
-    oled_write("6677889", 0, 4);
-    oled_update();
-
     adc_dma_start();
+
+    /* Initial OLED update */
+    oled_task();
 
     while (1) {
         if (uart_in_available() > 0) {
@@ -130,15 +199,15 @@ int main(void)
 
                     if (!velocity_mode) {
                         /* Enable velocity mode on first velocity command */
-                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
-                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                         velocity_mode = true;
                         printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
                     } else {
-                        pwm_velocity_set_target(dev[0], target_rpm);
-                        pwm_velocity_set_target(dev[1], target_rpm);
+                        foc_velocity_set_target(motor[0], target_rpm);
+                        foc_velocity_set_target(motor[1], target_rpm);
                     }
                     printf("Target velocity: %d RPM\n", (int)target_rpm);
                     break;
@@ -150,15 +219,15 @@ int main(void)
 
                     if (!velocity_mode) {
                         /* Enable velocity mode on first velocity command */
-                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
-                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                         velocity_mode = true;
                         printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
                     } else {
-                        pwm_velocity_set_target(dev[0], target_rpm);
-                        pwm_velocity_set_target(dev[1], target_rpm);
+                        foc_velocity_set_target(motor[0], target_rpm);
+                        foc_velocity_set_target(motor[1], target_rpm);
                     }
                     printf("Target velocity: %d RPM\n", (int)target_rpm);
                     break;
@@ -171,11 +240,11 @@ int main(void)
 
                     /* Update amplitude if in velocity mode */
                     if (velocity_mode) {
-                        pwm_velocity_disable(dev[0]);
-                        pwm_velocity_disable(dev[1]);
-                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_disable(motor[0]);
+                        foc_velocity_disable(motor[1]);
+                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
-                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                     }
                     break;
@@ -188,11 +257,11 @@ int main(void)
 
                     /* Update amplitude if in velocity mode */
                     if (velocity_mode) {
-                        pwm_velocity_disable(dev[0]);
-                        pwm_velocity_disable(dev[1]);
-                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_disable(motor[0]);
+                        foc_velocity_disable(motor[1]);
+                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
-                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                     }
                     break;
@@ -201,15 +270,15 @@ int main(void)
                 case 'P':
                     /* Toggle position/velocity mode */
                     if (velocity_mode) {
-                        pwm_velocity_disable(dev[0]);
-                        pwm_velocity_disable(dev[1]);
+                        foc_velocity_disable(motor[0]);
+                        foc_velocity_disable(motor[1]);
                         velocity_mode = false;
                         target_rpm = 0.0f;
                         printf("Position mode enabled\n");
                     } else {
-                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
-                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                        foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                         velocity_mode = true;
                         printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
@@ -225,8 +294,8 @@ int main(void)
 
                     if (velocity_mode) {
                         float rpm0, rpm1;
-                        pwm_velocity_get_current(dev[0], &rpm0);
-                        pwm_velocity_get_current(dev[1], &rpm1);
+                        foc_velocity_get_current(motor[0], &rpm0);
+                        foc_velocity_get_current(motor[1], &rpm1);
                         printf("Target RPM: %d\n", (int)target_rpm);
                         printf("Motor 0 current RPM: %d\n", (int)rpm0);
                         printf("Motor 1 current RPM: %d\n", (int)rpm1);
@@ -251,8 +320,8 @@ int main(void)
                         if (angle >= 360.0f) {
                             angle -= 360.0f;
                         }
-                        pwm_set_vector(dev[0], angle, amplitude);
-                        pwm_set_vector(dev[1], angle, amplitude);
+                        pwm_set_vector(pwm_dev[0], angle, amplitude);
+                        pwm_set_vector(pwm_dev[1], angle, amplitude);
                         printf("Position: %d deg (amplitude: %d%%)\n", (int)angle, (int)amplitude);
                     }
                     break;
@@ -292,7 +361,12 @@ int main(void)
 
         if (command & CMD_PWM) {
             command &= ~CMD_PWM;
-            pwm_task();
+            foc_task();
+        }
+
+        if (command & CMD_OLED) {
+            command &= ~CMD_OLED;
+            oled_task();
         }
     }
 }

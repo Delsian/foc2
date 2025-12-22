@@ -33,38 +33,12 @@ struct pwm_config {
 };
 
 /**
- * @brief Velocity control mode
- */
-enum pwm_velocity_mode {
-	PWM_VELOCITY_DISABLED = 0,   /* Velocity control disabled */
-	PWM_VELOCITY_OPEN_LOOP,      /* Open-loop velocity control */
-	PWM_VELOCITY_CLOSED_LOOP,    /* Closed-loop with encoder feedback */
-};
-
-/**
- * @brief Velocity control configuration
- */
-struct pwm_velocity_config {
-	enum pwm_velocity_mode mode; /* Control mode */
-	float target_rpm;            /* Target rotational speed in RPM */
-	float update_rate_hz;        /* Update rate in Hz */
-	float acceleration;          /* Acceleration limit in RPM/s */
-	uint8_t pole_pairs;          /* Number of motor pole pairs */
-};
-
-/**
  * @brief PWM device runtime data
  */
 struct pwm_data {
 	bool initialized;
 	float phase;                 /* Current phase angle in degrees */
 	float duty;                  /* Current duty cycle in percentage */
-
-	/* Velocity control */
-	struct pwm_velocity_config velocity_cfg;
-	float current_rpm;           /* Current velocity in RPM */
-	float electrical_angle;      /* Current electrical angle in degrees */
-	uint32_t update_counter;     /* Update counter for timing */
 };
 
 /**
@@ -149,55 +123,6 @@ int pwm_stop(struct pwm_device *dev);
  * @return Pointer to device or NULL if not found
  */
 struct pwm_device *pwm_get_device(const char *name);
-
-/**
- * @brief Enable velocity control mode
- *
- * @param dev Pointer to PWM device
- * @param mode Velocity control mode
- * @param target_rpm Target velocity in RPM
- * @param amplitude PWM amplitude/magnitude (0-100%)
- * @param update_rate_hz Control loop update rate in Hz
- * @param pole_pairs Number of motor pole pairs
- * @return 0 on success, negative value on failure
- */
-int pwm_velocity_enable(struct pwm_device *dev, enum pwm_velocity_mode mode,
-                       float target_rpm, float amplitude, float update_rate_hz,
-                       uint8_t pole_pairs);
-
-/**
- * @brief Disable velocity control mode
- *
- * @param dev Pointer to PWM device
- * @return 0 on success, negative value on failure
- */
-int pwm_velocity_disable(struct pwm_device *dev);
-
-/**
- * @brief Set target velocity
- *
- * @param dev Pointer to PWM device
- * @param target_rpm Target velocity in RPM
- * @return 0 on success, negative value on failure
- */
-int pwm_velocity_set_target(struct pwm_device *dev, float target_rpm);
-
-/**
- * @brief Get current velocity
- *
- * @param dev Pointer to PWM device
- * @param rpm Pointer to store current velocity in RPM
- * @return 0 on success, negative value on failure
- */
-int pwm_velocity_get_current(struct pwm_device *dev, float *rpm);
-
-/**
- * @brief Periodical PWM task, sync with timer
- *
- * This function handles velocity control updates and should be called
- * from a timer interrupt or periodically from the main loop.
- */
-void pwm_task(void);
 
 #ifdef __cplusplus
 }
