@@ -132,6 +132,13 @@ static void oled_task(void)
     }
     oled_write(line_buf, 0, 2);
 
+    /* Line 4: Current (in units of 100mA) */
+    float current_a = 0.0f;
+    foc_current_get(motor[0], &current_a);
+    int current_ma = (int)(current_a * 1000.0f);  /* Convert to mA */
+    snprintf(line_buf, sizeof(line_buf), "%d", current_ma);
+    oled_write(line_buf, 0, 4);
+
     oled_update();
 }
 
@@ -182,6 +189,9 @@ int main(void)
     i2c_scan(&hi2c2, "I2C2");
 
     adc_dma_start();
+
+    /* Enable current sensing for motor1 (after ADC DMA is started) */
+    foc_current_enable(motor[1]);
 
     /* Initial OLED update */
     oled_task();
@@ -302,6 +312,13 @@ int main(void)
                     } else {
                         printf("Position angle: %d deg\n", (int)angle);
                     }
+
+                    /* Print current sensing info */
+                    float current_a = 0.0f;
+                    foc_current_get(motor[1], &current_a);
+                    printf("Motor 1 current: %d mA (limit: %d A)\n",
+                           (int)(current_a * 1000),
+                           (int)motor[1]->current_cfg.current_limit_a);
 
                     /* Read encoder angles */
                     float angle0, angle1;

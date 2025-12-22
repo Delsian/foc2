@@ -43,6 +43,29 @@ struct foc_velocity_config {
 };
 
 /**
+ * @brief Current sensing configuration
+ */
+struct foc_current_config {
+	uint8_t adc_channel_a;       /* ADC channel for phase A current */
+	uint8_t adc_channel_b;       /* ADC channel for phase B current */
+	float current_sensitivity;   /* Current sensor sensitivity (V/A) */
+	float current_offset;        /* Current sensor offset (V) */
+	float current_limit_a;       /* Maximum allowed current (A) */
+	bool enabled;                /* Current sensing enabled */
+};
+
+/**
+ * @brief Current sensing data
+ */
+struct foc_current_data {
+	float phase_a_current;       /* Phase A current in Amps */
+	float phase_b_current;       /* Phase B current in Amps */
+	float phase_c_current;       /* Phase C current (calculated) in Amps */
+	float magnitude;             /* Current magnitude in Amps */
+	bool overcurrent;            /* Overcurrent flag */
+};
+
+/**
  * @brief FOC motor instance
  */
 struct foc_motor {
@@ -54,6 +77,10 @@ struct foc_motor {
 	float current_rpm;           /* Current velocity in RPM */
 	float electrical_angle;      /* Current electrical angle in degrees */
 	float amplitude;             /* PWM amplitude/magnitude (0-100%) */
+
+	/* Current sensing */
+	struct foc_current_config current_cfg;
+	struct foc_current_data current_data;
 };
 
 /**
@@ -121,6 +148,72 @@ struct foc_motor *foc_get_motor(const char *name);
  * called from a timer interrupt or periodically from the main loop.
  */
 void foc_task(void);
+
+/**
+ * @brief Configure current sensing for a motor
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param adc_ch_a ADC channel for phase A current (0-4)
+ * @param adc_ch_b ADC channel for phase B current (0-4)
+ * @param sensitivity Current sensor sensitivity in V/A (e.g., 0.2 for INA181A1 with 0.01Ω shunt)
+ * @param offset Current sensor offset voltage in V (0V for unidirectional INA181A1)
+ * @param limit_a Maximum allowed current in Amps
+ * @return 0 on success, negative value on failure
+ */
+int foc_current_config(struct foc_motor *motor, uint8_t adc_ch_a, uint8_t adc_ch_b,
+                       float sensitivity, float offset, float limit_a);
+
+/**
+ * @brief Enable current sensing
+ *
+ * @param motor Pointer to FOC motor instance
+ * @return 0 on success, negative value on failure
+ */
+int foc_current_enable(struct foc_motor *motor);
+
+/**
+ * @brief Disable current sensing
+ *
+ * @param motor Pointer to FOC motor instance
+ * @return 0 on success, negative value on failure
+ */
+int foc_current_disable(struct foc_motor *motor);
+
+/**
+ * @brief Update current measurements for a motor
+ *
+ * Reads ADC values, converts to currents, and checks limits.
+ * Should be called periodically (e.g., from foc_task).
+ *
+ * @param motor Pointer to FOC motor instance
+ */
+void foc_current_update(struct foc_motor *motor);
+
+/**
+ * @brief Get current motor current
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param current_a Pointer to store current magnitude in Amps (can be NULL)
+ * @return 0 on success, negative value on failure
+ */
+int foc_current_get(struct foc_motor *motor, float *current_a);
+
+/**
+ * @brief Check if motor is in overcurrent condition
+ *
+ * @param motor Pointer to FOC motor instance
+ * @return true if overcurrent detected, false otherwise
+ */
+bool foc_current_is_overcurrent(struct foc_motor *motor);
+
+/**
+ * @brief Set current limit for overcurrent protection
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param limit_a Current limit in Amps
+ * @return 0 on success, negative value on failure
+ */
+int foc_current_set_limit(struct foc_motor *motor, float limit_a);
 
 #ifdef __cplusplus
 }
