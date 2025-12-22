@@ -5,6 +5,7 @@
 #include "drv/uart_in.h"
 #include "drv/adc_dma.h"
 #include "drv/pwm.h"
+#include "drv/mt6701.h"
 #include <stdio.h>
 
 ADC_HandleTypeDef hadc2;
@@ -18,6 +19,8 @@ UART_HandleTypeDef huart2;
 
 static MainCommands command = 0;
 static struct pwm_device *dev[2];
+static mt6701_t encoder_motor0;
+static mt6701_t encoder_motor1;
 
 static void init(void)
 {
@@ -40,6 +43,10 @@ static void init(void)
 
     oled_init(&hi2c1);
     uart_in_init(&huart2);
+
+    /* Initialize MT6701 encoders */
+    mt6701_init(&encoder_motor0, &hi2c2, MT6701_I2C_ADDR, "encoder_motor0");
+    mt6701_init(&encoder_motor1, &hi2c1, MT6701_I2C_ADDR, "encoder_motor1");
 }
 
 static void pwm_init_devices(void)
@@ -57,6 +64,7 @@ static void pwm_init_devices(void)
 int main(void)
 {
     static uint32_t cnt = 0;
+    float angle = 0.0f;
 
     init();
     pwm_init_devices();
@@ -64,10 +72,6 @@ int main(void)
     /* Start PWM on both motors */
     pwm_start(dev[0]);
     pwm_start(dev[1]);
-
-    /* Set initial PWM vectors */
-    pwm_set_vector(dev[0], 0.0f, 5.0f);
-    pwm_set_vector(dev[1], 120.0f, 5.0f);
 
     printf("hello\n");
 
@@ -86,6 +90,13 @@ int main(void)
             uint8_t ch;
             uart_in_getchar(&ch);
             printf("Received char: %c (0x%02X)\n", ch, ch);
+            /* Set initial PWM vectors */
+            angle += 10.0f;
+            if (angle >= 360.0f) {
+                angle -= 360.0f;
+            }
+            pwm_set_vector(dev[0], angle, 7.0f);
+            pwm_set_vector(dev[1], angle, 7.0f);
         }
 
         if (command & CMD_RESET) {
@@ -102,12 +113,26 @@ int main(void)
         if (cnt++ >= 350000) {
             cnt = 0;
             HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
-            uint16_t adc_values[5];
-            adc_dma_get_all_channels(adc_values, 5);
-            printf("ADC Values: %u %u %u %u %u\n",
-                   adc_values[0], adc_values[1],
-                   adc_values[2], adc_values[3],
-                   adc_values[4]);
+
+            /* ADC testing */
+            // uint16_t adc_values[5];
+            // adc_dma_get_all_channels(adc_values, 5);
+            // printf("ADC Values: %u %u %u %u %u\n",
+            //        adc_values[0], adc_values[1],
+            //        adc_values[2], adc_values[3],
+            //        adc_values[4]);
+
+            /* MT6701 testing */
+            float angle0, angle1;
+            mt6701_read_angle_deg(&encoder_motor0, &angle0);
+            mt6701_read_angle_deg(&encoder_motor1, &angle1);
+            printf("Encoder angles: motor0=%d deg, motor1=%d deg\n", (int)angle0, (int)angle1);
+
+        }
+
+        if (command & CMD_PWM) {
+            command &= ~CMD_PWM;
+            pwm_task();
         }
     }
 }

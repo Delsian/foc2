@@ -346,3 +346,8 @@ struct pwm_device *pwm_get_device(const char *name)
 	printf("Unknown PWM device: %s\n", name);
 	return NULL;
 }
+
+void pwm_task(void)
+{
+    /* This function can be used for periodic PWM updates */
+}

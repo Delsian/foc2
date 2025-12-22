@@ -36,7 +36,7 @@ void MX_USART2_UART_Init(void);
 typedef enum {
     CMD_RESET = 0x01,
     CMD_ADC = 0x02,
-    CMD_PWM = 0x04,
+    CMD_PWM = 0x04, /* Periodical PWM task */
 } MainCommands;
 
 #ifdef __cplusplus

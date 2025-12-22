@@ -124,6 +124,12 @@ int pwm_stop(struct pwm_device *dev);
  */
 struct pwm_device *pwm_get_device(const char *name);
 
+/**
+ * @brief Periodical PWM task, sync with timer
+ *
+ */
+void pwm_task(void);
+
 #ifdef __cplusplus
 }
 #endif

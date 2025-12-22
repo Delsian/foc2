@@ -45,6 +45,7 @@ set(MX_Application_Src
     Src/drv/uart_in.c
     Src/drv/adc_dma.c
     Src/drv/pwm.c
+    Src/drv/mt6701.c
     Src/usb/usb_device.c
     Src/usb/usbd_conf.c
     Src/usb/usbd_desc.c
