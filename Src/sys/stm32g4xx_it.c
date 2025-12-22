@@ -21,6 +21,7 @@
 
 extern PCD_HandleTypeDef hpcd_USB_FS;
 extern DMA_HandleTypeDef hdma_adc2;
+extern TIM_HandleTypeDef htim4;
 extern UART_HandleTypeDef huart2;
 /******************************************************************************/
 /*           Cortex-M4 Processor Interruption and Exception Handlers          */
@@ -136,6 +137,14 @@ void USB_LP_IRQHandler(void)
 
   HAL_PCD_IRQHandler(&hpcd_USB_FS);
 
+}
+
+/**
+  * @brief This function handles TIM4 global interrupt.
+  */
+void TIM4_IRQHandler(void)
+{
+  HAL_TIM_IRQHandler(&htim4);
 }
 
 /**

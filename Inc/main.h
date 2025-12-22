@@ -29,6 +29,7 @@ void MX_I2C1_Init(void);
 void MX_I2C2_Init(void);
 void MX_TIM2_Init(void);
 void MX_TIM3_Init(void);
+void MX_TIM4_Init(void);
 void MX_UCPD1_Init(void);
 void MX_USART2_UART_Init(void);
 
@@ -38,6 +39,8 @@ typedef enum {
     CMD_ADC = 0x02,
     CMD_PWM = 0x04, /* Periodical PWM task */
 } MainCommands;
+
+void set_event(MainCommands cmd);
 
 #ifdef __cplusplus
 }

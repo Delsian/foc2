@@ -7,6 +7,7 @@ extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
 extern UART_HandleTypeDef huart2;
 
 void SystemClock_Config(void)
@@ -257,6 +258,19 @@ void MX_TIM3_Init(void)
     }
 
     HAL_TIM_MspPostInit(&htim3);
+}
+
+void MX_TIM4_Init(void)
+{
+    htim4.Instance = TIM4;
+    htim4.Init.Prescaler = 169;  /* 170 MHz / 170 = 1 MHz */
+    htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim4.Init.Period = 999;     /* 1 MHz / 1000 = 1 kHz (1ms period) */
+    htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+    if (HAL_TIM_Base_Init(&htim4) != HAL_OK) {
+        Error_Handler();
+    }
 }
 
 void MX_UCPD1_Init(void)

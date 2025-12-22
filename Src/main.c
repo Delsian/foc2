@@ -15,6 +15,7 @@ I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 static MainCommands command = 0;
@@ -35,6 +36,7 @@ static void init(void)
     MX_I2C2_Init();
     MX_TIM2_Init();
     MX_TIM3_Init();
+    MX_TIM4_Init();
     MX_UCPD1_Init();
     MX_USART2_UART_Init();
     MX_USB_Device_Init();
@@ -61,10 +63,30 @@ static void pwm_init_devices(void)
     }
 }
 
+void set_event(MainCommands cmd)
+{
+    command |= cmd;
+}
+
+/**
+ * @brief Timer period elapsed callback
+ * Called from TIM4 interrupt at 1kHz
+ */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM4) {
+        /* Set event to trigger PWM velocity control update */
+        set_event(CMD_PWM);
+    }
+}
+
 int main(void)
 {
     static uint32_t cnt = 0;
     float angle = 0.0f;
+    float target_rpm = 0.0f;
+    float amplitude = 5.0f;  /* Start with low amplitude to prevent overcurrent */
+    bool velocity_mode = false;
 
     init();
     pwm_init_devices();
@@ -73,7 +95,17 @@ int main(void)
     pwm_start(dev[0]);
     pwm_start(dev[1]);
 
+    /* Start TIM4 interrupt for velocity control at 1kHz */
+    HAL_TIM_Base_Start_IT(&htim4);
+
     printf("hello\n");
+    printf("Commands:\n");
+    printf("  + : Increase velocity by 10 RPM\n");
+    printf("  - : Decrease velocity by 10 RPM\n");
+    printf("  > : Increase amplitude by 5%%\n");
+    printf("  < : Decrease amplitude by 5%%\n");
+    printf("  p : Toggle position/velocity mode\n");
+    printf("  i : Print info\n");
 
     i2c_scan(&hi2c1, "I2C1");
     i2c_scan(&hi2c2, "I2C2");
@@ -89,14 +121,142 @@ int main(void)
         if (uart_in_available() > 0) {
             uint8_t ch;
             uart_in_getchar(&ch);
-            printf("Received char: %c (0x%02X)\n", ch, ch);
-            /* Set initial PWM vectors */
-            angle += 10.0f;
-            if (angle >= 360.0f) {
-                angle -= 360.0f;
+
+            switch (ch) {
+                case '+':
+                    /* Increase velocity by 10 RPM */
+                    target_rpm += 10.0f;
+                    if (target_rpm > 500.0f) target_rpm = 500.0f;  /* Limit max RPM */
+
+                    if (!velocity_mode) {
+                        /* Enable velocity mode on first velocity command */
+                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        velocity_mode = true;
+                        printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
+                    } else {
+                        pwm_velocity_set_target(dev[0], target_rpm);
+                        pwm_velocity_set_target(dev[1], target_rpm);
+                    }
+                    printf("Target velocity: %d RPM\n", (int)target_rpm);
+                    break;
+
+                case '-':
+                    /* Decrease velocity by 10 RPM */
+                    target_rpm -= 10.0f;
+                    if (target_rpm < -500.0f) target_rpm = -500.0f;  /* Limit min RPM */
+
+                    if (!velocity_mode) {
+                        /* Enable velocity mode on first velocity command */
+                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        velocity_mode = true;
+                        printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
+                    } else {
+                        pwm_velocity_set_target(dev[0], target_rpm);
+                        pwm_velocity_set_target(dev[1], target_rpm);
+                    }
+                    printf("Target velocity: %d RPM\n", (int)target_rpm);
+                    break;
+
+                case '>':
+                    /* Increase amplitude by 5% */
+                    amplitude += 5.0f;
+                    if (amplitude > 100.0f) amplitude = 100.0f;
+                    printf("Amplitude: %d%%\n", (int)amplitude);
+
+                    /* Update amplitude if in velocity mode */
+                    if (velocity_mode) {
+                        pwm_velocity_disable(dev[0]);
+                        pwm_velocity_disable(dev[1]);
+                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                    }
+                    break;
+
+                case '<':
+                    /* Decrease amplitude by 5% */
+                    amplitude -= 5.0f;
+                    if (amplitude < 0.0f) amplitude = 0.0f;
+                    printf("Amplitude: %d%%\n", (int)amplitude);
+
+                    /* Update amplitude if in velocity mode */
+                    if (velocity_mode) {
+                        pwm_velocity_disable(dev[0]);
+                        pwm_velocity_disable(dev[1]);
+                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                    }
+                    break;
+
+                case 'p':
+                case 'P':
+                    /* Toggle position/velocity mode */
+                    if (velocity_mode) {
+                        pwm_velocity_disable(dev[0]);
+                        pwm_velocity_disable(dev[1]);
+                        velocity_mode = false;
+                        target_rpm = 0.0f;
+                        printf("Position mode enabled\n");
+                    } else {
+                        pwm_velocity_enable(dev[0], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        pwm_velocity_enable(dev[1], PWM_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        velocity_mode = true;
+                        printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
+                    }
+                    break;
+
+                case 'i':
+                case 'I':
+                    /* Print info */
+                    printf("\n=== Motor Control Info ===\n");
+                    printf("Mode: %s\n", velocity_mode ? "Velocity" : "Position");
+                    printf("Amplitude: %d%%\n", (int)amplitude);
+
+                    if (velocity_mode) {
+                        float rpm0, rpm1;
+                        pwm_velocity_get_current(dev[0], &rpm0);
+                        pwm_velocity_get_current(dev[1], &rpm1);
+                        printf("Target RPM: %d\n", (int)target_rpm);
+                        printf("Motor 0 current RPM: %d\n", (int)rpm0);
+                        printf("Motor 1 current RPM: %d\n", (int)rpm1);
+                    } else {
+                        printf("Position angle: %d deg\n", (int)angle);
+                    }
+
+                    /* Read encoder angles */
+                    float angle0, angle1;
+                    if (mt6701_read_angle_deg(&encoder_motor0, &angle0) == 0 &&
+                        mt6701_read_angle_deg(&encoder_motor1, &angle1) == 0) {
+                        printf("Encoder 0: %d deg\n", (int)angle0);
+                        printf("Encoder 1: %d deg\n", (int)angle1);
+                    }
+                    printf("========================\n\n");
+                    break;
+
+                default:
+                    /* In position mode, use angle control */
+                    if (!velocity_mode) {
+                        angle += 10.0f;
+                        if (angle >= 360.0f) {
+                            angle -= 360.0f;
+                        }
+                        pwm_set_vector(dev[0], angle, amplitude);
+                        pwm_set_vector(dev[1], angle, amplitude);
+                        printf("Position: %d deg (amplitude: %d%%)\n", (int)angle, (int)amplitude);
+                    }
+                    break;
             }
-            pwm_set_vector(dev[0], angle, 7.0f);
-            pwm_set_vector(dev[1], angle, 7.0f);
         }
 
         if (command & CMD_RESET) {
@@ -123,10 +283,10 @@ int main(void)
             //        adc_values[4]);
 
             /* MT6701 testing */
-            float angle0, angle1;
-            mt6701_read_angle_deg(&encoder_motor0, &angle0);
-            mt6701_read_angle_deg(&encoder_motor1, &angle1);
-            printf("Encoder angles: motor0=%d deg, motor1=%d deg\n", (int)angle0, (int)angle1);
+            // float angle0, angle1;
+            // mt6701_read_angle_deg(&encoder_motor0, &angle0);
+            // mt6701_read_angle_deg(&encoder_motor1, &angle1);
+            // printf("Encoder angles: motor0=%d deg, motor1=%d deg\n", (int)angle0, (int)angle1);
 
         }
 

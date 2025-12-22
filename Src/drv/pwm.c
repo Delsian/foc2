@@ -37,12 +37,32 @@ static struct pwm_data pwm_motor0_data = {
 	.initialized = false,
 	.phase = 0.0f,
 	.duty = 0.0f,
+	.velocity_cfg = {
+		.mode = PWM_VELOCITY_DISABLED,
+		.target_rpm = 0.0f,
+		.update_rate_hz = 0.0f,
+		.acceleration = 1000.0f,  /* Default 1000 RPM/s */
+		.pole_pairs = 7,          /* Default 7 pole pairs */
+	},
+	.current_rpm = 0.0f,
+	.electrical_angle = 0.0f,
+	.update_counter = 0,
 };
 
 static struct pwm_data pwm_motor1_data = {
 	.initialized = false,
 	.phase = 0.0f,
 	.duty = 0.0f,
+	.velocity_cfg = {
+		.mode = PWM_VELOCITY_DISABLED,
+		.target_rpm = 0.0f,
+		.update_rate_hz = 0.0f,
+		.acceleration = 1000.0f,  /* Default 1000 RPM/s */
+		.pole_pairs = 7,          /* Default 7 pole pairs */
+	},
+	.current_rpm = 0.0f,
+	.electrical_angle = 0.0f,
+	.update_counter = 0,
 };
 
 /* Device instances */
@@ -347,7 +367,155 @@ struct pwm_device *pwm_get_device(const char *name)
 	return NULL;
 }
 
+int pwm_velocity_enable(struct pwm_device *dev, enum pwm_velocity_mode mode,
+                       float target_rpm, float amplitude, float update_rate_hz,
+                       uint8_t pole_pairs)
+{
+	struct pwm_data *data = dev->data;
+
+	if (!data->initialized) {
+		printf("%s: Device not initialized\n", dev->name);
+		return -1;
+	}
+
+	if (mode == PWM_VELOCITY_DISABLED) {
+		printf("%s: Invalid mode (use pwm_velocity_disable)\n", dev->name);
+		return -1;
+	}
+
+	if (update_rate_hz <= 0.0f) {
+		printf("%s: Invalid update rate: %d Hz\n", dev->name, (int)update_rate_hz);
+		return -1;
+	}
+
+	if (pole_pairs == 0) {
+		printf("%s: Invalid pole pairs: %u\n", dev->name, pole_pairs);
+		return -1;
+	}
+
+	/* Configure velocity control */
+	data->velocity_cfg.mode = mode;
+	data->velocity_cfg.target_rpm = target_rpm;
+	data->velocity_cfg.update_rate_hz = update_rate_hz;
+	data->velocity_cfg.pole_pairs = pole_pairs;
+	data->current_rpm = 0.0f;
+	data->electrical_angle = 0.0f;
+	data->update_counter = 0;
+	data->duty = amplitude;
+
+	printf("%s: Velocity control enabled - mode=%d, target=%d RPM, rate=%d Hz, poles=%u\n",
+		dev->name, mode, (int)target_rpm, (int)update_rate_hz, pole_pairs);
+
+	return 0;
+}
+
+int pwm_velocity_disable(struct pwm_device *dev)
+{
+	struct pwm_data *data = dev->data;
+
+	if (!data->initialized) {
+		printf("%s: Device not initialized\n", dev->name);
+		return -1;
+	}
+
+	data->velocity_cfg.mode = PWM_VELOCITY_DISABLED;
+	data->current_rpm = 0.0f;
+	data->electrical_angle = 0.0f;
+
+	printf("%s: Velocity control disabled\n", dev->name);
+	return 0;
+}
+
+int pwm_velocity_set_target(struct pwm_device *dev, float target_rpm)
+{
+	struct pwm_data *data = dev->data;
+
+	if (!data->initialized) {
+		printf("%s: Device not initialized\n", dev->name);
+		return -1;
+	}
+
+	if (data->velocity_cfg.mode == PWM_VELOCITY_DISABLED) {
+		printf("%s: Velocity control not enabled\n", dev->name);
+		return -1;
+	}
+
+	data->velocity_cfg.target_rpm = target_rpm;
+	return 0;
+}
+
+int pwm_velocity_get_current(struct pwm_device *dev, float *rpm)
+{
+	struct pwm_data *data = dev->data;
+
+	if (!data->initialized || !rpm) {
+		return -1;
+	}
+
+	*rpm = data->current_rpm;
+	return 0;
+}
+
+/**
+ * @brief Update velocity control for a single device
+ */
+static void pwm_velocity_update(struct pwm_device *dev)
+{
+	struct pwm_data *data = dev->data;
+	struct pwm_velocity_config *cfg = &data->velocity_cfg;
+	float rpm_step, mechanical_rpm, electrical_rpm;
+	float angle_step_deg;
+
+	if (!data->initialized || cfg->mode == PWM_VELOCITY_DISABLED) {
+		return;
+	}
+
+	/* Calculate RPM acceleration step per update */
+	rpm_step = cfg->acceleration / cfg->update_rate_hz;
+
+	/* Ramp current RPM towards target with acceleration limit */
+	if (data->current_rpm < cfg->target_rpm) {
+		data->current_rpm += rpm_step;
+		if (data->current_rpm > cfg->target_rpm) {
+			data->current_rpm = cfg->target_rpm;
+		}
+	} else if (data->current_rpm > cfg->target_rpm) {
+		data->current_rpm -= rpm_step;
+		if (data->current_rpm < cfg->target_rpm) {
+			data->current_rpm = cfg->target_rpm;
+		}
+	}
+
+	/* Convert mechanical RPM to electrical RPM
+	 * Electrical RPM = Mechanical RPM × pole_pairs
+	 */
+	mechanical_rpm = data->current_rpm;
+	electrical_rpm = mechanical_rpm * (float)cfg->pole_pairs;
+
+	/* Calculate angle increment per update period
+	 * angle_step = (electrical_rpm / 60) * (360 / update_rate_hz)
+	 *            = electrical_rpm * 6 / update_rate_hz
+	 */
+	angle_step_deg = (electrical_rpm * 360.0f) / (60.0f * cfg->update_rate_hz);
+
+	/* Update electrical angle */
+	data->electrical_angle += angle_step_deg;
+
+	/* Normalize angle to 0-360 degrees */
+	while (data->electrical_angle >= 360.0f) {
+		data->electrical_angle -= 360.0f;
+	}
+	while (data->electrical_angle < 0.0f) {
+		data->electrical_angle += 360.0f;
+	}
+
+	/* Update PWM vector with current angle and amplitude */
+	pwm_set_vector(dev, data->electrical_angle, data->duty);
+}
+
 void pwm_task(void)
 {
-    /* This function can be used for periodic PWM updates */
+	/* Update velocity control for both motors */
+	pwm_velocity_update(&pwm_device_motor0);
+	pwm_velocity_update(&pwm_device_motor1);
 }
