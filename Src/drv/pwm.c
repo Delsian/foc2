@@ -316,6 +316,140 @@ int pwm_set_vector(struct pwm_device *dev, float angle_deg, float amplitude)
 	return 0;
 }
 
+int pwm_set_vector_svpwm(struct pwm_device *dev, float angle_deg, float amplitude)
+{
+	const struct pwm_config *config = dev->config;
+	struct pwm_data *data = dev->data;
+	float duty_a, duty_b, duty_c;
+	int sector;
+	float angle_sector;
+	float T1, T2, T0;
+	float Ta, Tb, Tc;
+	float Uout;
+
+	if (!data->initialized) {
+		printf("%s: Device not initialized\n", dev->name);
+		return -1;
+	}
+
+	/* Clamp amplitude to 0-100% */
+	amplitude = clamp_float(amplitude, 0.0f, 100.0f);
+
+	/* Normalize angle to 0-360 degrees */
+	while (angle_deg < 0.0f) angle_deg += 360.0f;
+	while (angle_deg >= 360.0f) angle_deg -= 360.0f;
+
+	/* Space Vector PWM Implementation (SimpleFOC algorithm)
+	 *
+	 * SVPWM divides the space into 6 sectors (60 degrees each).
+	 * For each sector, we use two adjacent base vectors and one zero vector.
+	 * This maximizes DC bus utilization and reduces harmonics.
+	 */
+
+	/* Determine sector (0-5) based on angle */
+	sector = (int)(angle_deg / 60.0f);
+	if (sector > 5) sector = 5;
+
+	/* Calculate angle within sector (0-60 degrees) */
+	angle_sector = angle_deg - (sector * 60.0f);
+	float angle_sector_rad = angle_sector * M_PI_F / 180.0f;
+
+	/* Calculate normalized output voltage (0-1)
+	 * SVPWM can utilize up to sqrt(3)/2 ≈ 0.866 of DC bus in linear region
+	 * We scale amplitude accordingly: Uout = amplitude / 100 / sqrt(3)
+	 */
+	Uout = (amplitude / 100.0f) / 1.732050808f;  /* 1/sqrt(3) */
+
+	/* Clamp to maximum achievable voltage in SVPWM */
+	if (Uout > 0.577350269f) {  /* 1/sqrt(3) */
+		Uout = 0.577350269f;
+	}
+
+	/* Calculate switching times for sector vectors
+	 * T1: Time for first adjacent vector
+	 * T2: Time for second adjacent vector
+	 * T0: Time for zero vector (split between start and end)
+	 */
+	T1 = 1.732050808f * Uout * sinf(M_PI_F / 3.0f - angle_sector_rad);
+	T2 = 1.732050808f * Uout * sinf(angle_sector_rad);
+	T0 = 1.0f - T1 - T2;
+
+	/* Handle over-modulation - clamp to linear region */
+	if (T0 < 0.0f) {
+		T0 = 0.0f;
+		T1 = T1 / (T1 + T2);
+		T2 = 1.0f - T1;
+	}
+
+	/* Calculate phase duty cycles based on sector
+	 * Each sector has different mapping of T0, T1, T2 to phases A, B, C
+	 */
+	switch (sector) {
+	case 0:  /* 0-60 degrees */
+		Ta = T1 + T2 + T0 / 2.0f;
+		Tb = T2 + T0 / 2.0f;
+		Tc = T0 / 2.0f;
+		break;
+	case 1:  /* 60-120 degrees */
+		Ta = T1 + T0 / 2.0f;
+		Tb = T1 + T2 + T0 / 2.0f;
+		Tc = T0 / 2.0f;
+		break;
+	case 2:  /* 120-180 degrees */
+		Ta = T0 / 2.0f;
+		Tb = T1 + T2 + T0 / 2.0f;
+		Tc = T2 + T0 / 2.0f;
+		break;
+	case 3:  /* 180-240 degrees */
+		Ta = T0 / 2.0f;
+		Tb = T1 + T0 / 2.0f;
+		Tc = T1 + T2 + T0 / 2.0f;
+		break;
+	case 4:  /* 240-300 degrees */
+		Ta = T2 + T0 / 2.0f;
+		Tb = T0 / 2.0f;
+		Tc = T1 + T2 + T0 / 2.0f;
+		break;
+	case 5:  /* 300-360 degrees */
+		Ta = T1 + T2 + T0 / 2.0f;
+		Tb = T0 / 2.0f;
+		Tc = T1 + T0 / 2.0f;
+		break;
+	default:
+		Ta = Tb = Tc = 0.5f;
+		break;
+	}
+
+	/* Convert normalized duty cycles (0-1) to percentage (0-100%) */
+	duty_a = Ta * 100.0f;
+	duty_b = Tb * 100.0f;
+	duty_c = Tc * 100.0f;
+
+	/* Clamp to valid range */
+	duty_a = clamp_float(duty_a, 0.0f, 100.0f);
+	duty_b = clamp_float(duty_b, 0.0f, 100.0f);
+	duty_c = clamp_float(duty_c, 0.0f, 100.0f);
+
+	/* Get timer period */
+	uint32_t period = __HAL_TIM_GET_AUTORELOAD(config->htim);
+
+	/* Convert duty cycles to compare values */
+	uint32_t compare_a = (uint32_t)((duty_a / 100.0f) * period);
+	uint32_t compare_b = (uint32_t)((duty_b / 100.0f) * period);
+	uint32_t compare_c = (uint32_t)((duty_c / 100.0f) * period);
+
+	/* Set PWM outputs */
+	__HAL_TIM_SET_COMPARE(config->htim, config->channel_a, compare_a);
+	__HAL_TIM_SET_COMPARE(config->htim, config->channel_b, compare_b);
+	__HAL_TIM_SET_COMPARE(config->htim, config->channel_c, compare_c);
+
+	/* Store current values */
+	data->phase = angle_deg;
+	data->duty = amplitude;
+
+	return 0;
+}
+
 int pwm_disable(struct pwm_device *dev)
 {
 	const struct pwm_config *config = dev->config;

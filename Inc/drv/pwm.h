@@ -93,6 +93,24 @@ int pwm_set_phase_duty(struct pwm_device *dev, uint8_t phase, float duty);
 int pwm_set_vector(struct pwm_device *dev, float angle_deg, float amplitude);
 
 /**
+ * @brief Set three-phase Space Vector PWM (SVPWM)
+ *
+ * Space Vector Modulation offers superior performance compared to sinusoidal PWM:
+ * - ~15% higher voltage utilization (uses full DC bus voltage)
+ * - Lower harmonic distortion and reduced torque ripple
+ * - Better power efficiency and reduced switching losses
+ * - Optimized for BLDC/PMSM motor control
+ *
+ * This implementation is based on the SimpleFOC library algorithm.
+ *
+ * @param dev Pointer to PWM device
+ * @param angle_deg Electrical angle in degrees (0-360)
+ * @param amplitude Amplitude/magnitude (0-100%)
+ * @return 0 on success, negative value on failure
+ */
+int pwm_set_vector_svpwm(struct pwm_device *dev, float angle_deg, float amplitude);
+
+/**
  * @brief Disable all PWM outputs (set to 0%)
  *
  * @param dev Pointer to PWM device

@@ -192,8 +192,11 @@ void foc_velocity_update(struct foc_motor *motor)
 		motor->electrical_angle += 360.0f;
 	}
 
-	/* Update PWM vector with current angle and amplitude */
-	pwm_set_vector(motor->pwm_dev, motor->electrical_angle, motor->amplitude);
+	/* Update PWM vector with current angle and amplitude using SVPWM
+	 * SVPWM provides ~15% better voltage utilization and lower harmonics
+	 * compared to traditional sinusoidal PWM, improving efficiency
+	 */
+	pwm_set_vector_svpwm(motor->pwm_dev, motor->electrical_angle, motor->amplitude);
 }
 
 struct foc_motor *foc_get_motor(const char *name)
