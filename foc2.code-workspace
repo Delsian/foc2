@@ -97,7 +97,8 @@
         "terminal.integrated.enablePersistentSessions": false,
         "terminal.integrated.localEchoEnabled": "off",
         "terminal.integrated.localEchoLatencyThreshold": -1,
-        "editor.fontSize": 16
+        "editor.fontSize": 16,
+        "project-actions.configFileName": "foc2.code-workspace"
     },
 	"tasks": {
         "version": "2.0.0",
@@ -194,5 +195,12 @@
                 "serverArgs": ["-speed", "4000"]
             },
         ]
-    }
+    },
+    "actions": [
+        {
+            "text": "$(arrow-down) Pull",
+            "command": "git pull",
+            "color": "#a763b8"
+        }
+    ]
 }
