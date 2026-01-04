@@ -1,4 +1,5 @@
 #include "main.h"
+#include <stdio.h>
 
 extern ADC_HandleTypeDef hadc2;
 extern DMA_HandleTypeDef hdma_adc2;
@@ -17,10 +18,8 @@ void SystemClock_Config(void)
 
     HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_HSE;
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
     RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
     RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
     RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
     RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV2;
@@ -115,15 +114,21 @@ void MX_FDCAN1_Init(void)
 {
     hfdcan1.Instance = FDCAN1;
     hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
-    hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
+    hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
     hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
-    hfdcan1.Init.AutoRetransmission = DISABLE;
-    hfdcan1.Init.TransmitPause = DISABLE;
+    hfdcan1.Init.AutoRetransmission = ENABLE;
+    hfdcan1.Init.TransmitPause = ENABLE;
     hfdcan1.Init.ProtocolException = DISABLE;
-    hfdcan1.Init.NominalPrescaler = 16;
-    hfdcan1.Init.NominalSyncJumpWidth = 1;
-    hfdcan1.Init.NominalTimeSeg1 = 1;
-    hfdcan1.Init.NominalTimeSeg2 = 1;
+    // hfdcan1.Init.NominalPrescaler     = 9;
+    // hfdcan1.Init.NominalSyncJumpWidth = 2;
+    // hfdcan1.Init.NominalTimeSeg1      = 11;
+    // hfdcan1.Init.NominalTimeSeg2      = 4;
+
+    hfdcan1.Init.NominalPrescaler     = 3;
+    hfdcan1.Init.NominalSyncJumpWidth = 4;
+    hfdcan1.Init.NominalTimeSeg1      = 11;
+    hfdcan1.Init.NominalTimeSeg2      = 4;
+
     hfdcan1.Init.DataPrescaler = 1;
     hfdcan1.Init.DataSyncJumpWidth = 1;
     hfdcan1.Init.DataTimeSeg1 = 1;

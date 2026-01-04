@@ -23,6 +23,7 @@ extern PCD_HandleTypeDef hpcd_USB_FS;
 extern DMA_HandleTypeDef hdma_adc2;
 extern TIM_HandleTypeDef htim4;
 extern UART_HandleTypeDef huart2;
+extern FDCAN_HandleTypeDef hfdcan1;
 /******************************************************************************/
 /*           Cortex-M4 Processor Interruption and Exception Handlers          */
 /******************************************************************************/
@@ -136,6 +137,26 @@ void USB_LP_IRQHandler(void)
 {
 
   HAL_PCD_IRQHandler(&hpcd_USB_FS);
+
+}
+
+/**
+  * @brief This function handles FDCAN1 interrupt 0.
+  */
+void FDCAN1_IT0_IRQHandler(void)
+{
+
+  HAL_FDCAN_IRQHandler(&hfdcan1);
+
+}
+
+/**
+  * @brief This function handles FDCAN1 interrupt 1.
+  */
+void FDCAN1_IT1_IRQHandler(void)
+{
+
+  HAL_FDCAN_IRQHandler(&hfdcan1);
 
 }
 

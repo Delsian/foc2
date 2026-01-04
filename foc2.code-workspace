@@ -196,6 +196,9 @@
             },
         ]
     },
+    "recommendations": [
+        "julynx.project-actions"
+    ],
     "actions": [
         {
             "text": "$(arrow-down) Pull",
