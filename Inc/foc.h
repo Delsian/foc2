@@ -19,8 +19,11 @@ extern "C" {
  * @brief FOC motor control
  *
  * This module provides high-level motor control functions including
- * velocity control for BLDC motors.
+ * velocity control for BLDC motors with optional encoder feedback
+ * for closed-loop control.
  */
+
+#include "drv/mt6701.h"
 
 /**
  * @brief Velocity control mode
@@ -66,6 +69,29 @@ struct foc_current_data {
 };
 
 /**
+ * @brief Encoder configuration
+ */
+struct foc_encoder_config {
+	mt6701_t *encoder;           /* Pointer to encoder device */
+	bool enabled;                /* Encoder feedback enabled */
+	float mechanical_offset;     /* Mechanical offset in degrees (0-360) */
+	uint8_t pole_pairs;          /* Motor pole pairs for electrical angle calculation */
+	bool invert_direction;       /* Invert rotation direction */
+};
+
+/**
+ * @brief Encoder runtime data
+ */
+struct foc_encoder_data {
+	float mechanical_angle;      /* Current mechanical angle in degrees (0-360) */
+	float electrical_angle;      /* Current electrical angle in degrees (0-360) */
+	float velocity_rpm;          /* Measured velocity in RPM */
+	uint32_t last_update_ms;     /* Last update timestamp */
+	float last_angle;            /* Last angle for velocity calculation */
+	float filtered_velocity;     /* Filtered velocity for smoothing */
+};
+
+/**
  * @brief FOC motor instance
  */
 struct foc_motor {
@@ -81,6 +107,10 @@ struct foc_motor {
 	/* Current sensing */
 	struct foc_current_config current_cfg;
 	struct foc_current_data current_data;
+
+	/* Encoder feedback */
+	struct foc_encoder_config encoder_cfg;
+	struct foc_encoder_data encoder_data;
 };
 
 /**
@@ -214,6 +244,63 @@ bool foc_current_is_overcurrent(struct foc_motor *motor);
  * @return 0 on success, negative value on failure
  */
 int foc_current_set_limit(struct foc_motor *motor, float limit_a);
+
+/**
+ * @brief Configure encoder for closed-loop control
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param encoder Pointer to MT6701 encoder device
+ * @param pole_pairs Number of motor pole pairs
+ * @param mechanical_offset Mechanical offset in degrees (0-360)
+ * @param invert_direction Set to true to invert rotation direction
+ * @return 0 on success, negative value on failure
+ */
+int foc_encoder_config(struct foc_motor *motor, mt6701_t *encoder,
+                       uint8_t pole_pairs, float mechanical_offset,
+                       bool invert_direction);
+
+/**
+ * @brief Enable encoder feedback for closed-loop control
+ *
+ * When enabled, the motor will use encoder feedback for:
+ * - Accurate rotor position (commutation angle)
+ * - Real-time velocity measurement
+ * - Closed-loop velocity control
+ *
+ * @param motor Pointer to FOC motor instance
+ * @return 0 on success, negative value on failure
+ */
+int foc_encoder_enable(struct foc_motor *motor);
+
+/**
+ * @brief Disable encoder feedback (revert to open-loop)
+ *
+ * @param motor Pointer to FOC motor instance
+ * @return 0 on success, negative value on failure
+ */
+int foc_encoder_disable(struct foc_motor *motor);
+
+/**
+ * @brief Update encoder readings and calculate electrical angle
+ *
+ * This function should be called periodically (e.g., from foc_task).
+ * It reads the encoder, calculates electrical angle, and estimates velocity.
+ *
+ * @param motor Pointer to FOC motor instance
+ */
+void foc_encoder_update(struct foc_motor *motor);
+
+/**
+ * @brief Get current encoder angle and velocity
+ *
+ * @param motor Pointer to FOC motor instance
+ * @param mechanical_angle Pointer to store mechanical angle in degrees (can be NULL)
+ * @param electrical_angle Pointer to store electrical angle in degrees (can be NULL)
+ * @param velocity_rpm Pointer to store velocity in RPM (can be NULL)
+ * @return 0 on success, negative value on failure
+ */
+int foc_encoder_get(struct foc_motor *motor, float *mechanical_angle,
+                    float *electrical_angle, float *velocity_rpm);
 
 #ifdef __cplusplus
 }

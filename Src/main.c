@@ -22,7 +22,7 @@ UART_HandleTypeDef huart2;
 static MainCommands command = 0;
 static struct pwm_device *pwm_dev[2];
 static struct foc_motor *motor[2];
-static mt6701_t encoder_motor0;
+// static mt6701_t encoder_motor0;  // Not used in Motor 1 only configuration
 static mt6701_t encoder_motor1;
 
 /* Motor control state variables */
@@ -30,6 +30,7 @@ static float angle = 0.0f;
 static float target_rpm = 0.0f;
 static float amplitude = 5.0f;  /* Start with low amplitude to prevent overcurrent */
 static bool velocity_mode = false;
+static bool encoder_enabled[2] = {false, false};  /* Track encoder status per motor */
 
 static void init(void)
 {
@@ -56,8 +57,10 @@ static void init(void)
     can_init(&hfdcan1);
 
     /* Initialize MT6701 encoders */
-    mt6701_init(&encoder_motor0, &hi2c2, MT6701_I2C_ADDR, "encoder_motor0");
-    mt6701_init(&encoder_motor1, &hi2c1, MT6701_I2C_ADDR, "encoder_motor1");
+    /* Only motor1 with encoder1 present for testing */
+    /* Using I2C2 to avoid conflict with OLED on I2C1 */
+    // mt6701_init(&encoder_motor0, &hi2c2, MT6701_I2C_ADDR, "encoder_motor0");  // Not present
+    mt6701_init(&encoder_motor1, &hi2c2, MT6701_I2C_ADDR, "encoder_motor1");
 }
 
 static void pwm_init_devices(void)
@@ -94,7 +97,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 int main(void)
-+{
+{
     static uint32_t cnt = 0;
 
     init();
@@ -108,12 +111,18 @@ int main(void)
     HAL_TIM_Base_Start_IT(&htim4);
 
     printf("hello\n");
+    printf("=== Motor 1 Test Configuration ===\n");
+    printf("Motor 1 + Encoder 1 on I2C2 enabled\n");
+    printf("Motor 0 disabled for this test\n");
+    printf("OLED display on I2C1\n\n");
     printf("Commands:\n");
     printf("  + : Increase velocity by 10 RPM\n");
     printf("  - : Decrease velocity by 10 RPM\n");
     printf("  > : Increase amplitude by 5%%\n");
     printf("  < : Decrease amplitude by 5%%\n");
     printf("  p : Toggle position/velocity mode\n");
+    printf("  e : Toggle encoder feedback (closed-loop)\n");
+    printf("  c : Calibrate encoder offset\n");
     printf("  i : Print info\n");
 
     i2c_scan(&hi2c1, "I2C1");
@@ -136,15 +145,12 @@ int main(void)
                     if (target_rpm > 500.0f) target_rpm = 500.0f;  /* Limit max RPM */
 
                     if (!velocity_mode) {
-                        /* Enable velocity mode on first velocity command */
-                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
-                                          target_rpm, amplitude, 1000.0f, 7);
+                        /* Enable velocity mode on first velocity command - Motor 1 only */
                         foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                         velocity_mode = true;
-                        printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
+                        printf("Velocity mode enabled on Motor 1 (amplitude: %d%%)\n", (int)amplitude);
                     } else {
-                        foc_velocity_set_target(motor[0], target_rpm);
                         foc_velocity_set_target(motor[1], target_rpm);
                     }
                     printf("Target velocity: %d RPM\n", (int)target_rpm);
@@ -156,15 +162,12 @@ int main(void)
                     if (target_rpm < -500.0f) target_rpm = -500.0f;  /* Limit min RPM */
 
                     if (!velocity_mode) {
-                        /* Enable velocity mode on first velocity command */
-                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
-                                          target_rpm, amplitude, 1000.0f, 7);
+                        /* Enable velocity mode on first velocity command - Motor 1 only */
                         foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                         velocity_mode = true;
-                        printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
+                        printf("Velocity mode enabled on Motor 1 (amplitude: %d%%)\n", (int)amplitude);
                     } else {
-                        foc_velocity_set_target(motor[0], target_rpm);
                         foc_velocity_set_target(motor[1], target_rpm);
                     }
                     printf("Target velocity: %d RPM\n", (int)target_rpm);
@@ -176,12 +179,9 @@ int main(void)
                     if (amplitude > 100.0f) amplitude = 100.0f;
                     printf("Amplitude: %d%%\n", (int)amplitude);
 
-                    /* Update amplitude if in velocity mode */
+                    /* Update amplitude if in velocity mode - Motor 1 only */
                     if (velocity_mode) {
-                        foc_velocity_disable(motor[0]);
                         foc_velocity_disable(motor[1]);
-                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
-                                          target_rpm, amplitude, 1000.0f, 7);
                         foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                     }
@@ -193,12 +193,9 @@ int main(void)
                     if (amplitude < 0.0f) amplitude = 0.0f;
                     printf("Amplitude: %d%%\n", (int)amplitude);
 
-                    /* Update amplitude if in velocity mode */
+                    /* Update amplitude if in velocity mode - Motor 1 only */
                     if (velocity_mode) {
-                        foc_velocity_disable(motor[0]);
                         foc_velocity_disable(motor[1]);
-                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
-                                          target_rpm, amplitude, 1000.0f, 7);
                         foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                     }
@@ -206,37 +203,117 @@ int main(void)
 
                 case 'p':
                 case 'P':
-                    /* Toggle position/velocity mode */
+                    /* Toggle position/velocity mode - Motor 1 only */
                     if (velocity_mode) {
-                        foc_velocity_disable(motor[0]);
                         foc_velocity_disable(motor[1]);
                         velocity_mode = false;
                         target_rpm = 0.0f;
                         printf("Position mode enabled\n");
                     } else {
-                        foc_velocity_enable(motor[0], FOC_VELOCITY_OPEN_LOOP,
-                                          target_rpm, amplitude, 1000.0f, 7);
                         foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
                                           target_rpm, amplitude, 1000.0f, 7);
                         velocity_mode = true;
-                        printf("Velocity mode enabled (amplitude: %d%%)\n", (int)amplitude);
+                        printf("Velocity mode enabled on Motor 1 (amplitude: %d%%)\n", (int)amplitude);
                     }
+                    break;
+
+                case 'e':
+                case 'E':
+                    /* Toggle encoder feedback for Motor 1 */
+                    if (encoder_enabled[1]) {
+                        foc_encoder_disable(motor[1]);
+                        encoder_enabled[1] = false;
+                        printf("Motor 1 encoder feedback DISABLED (open-loop control)\n");
+                    } else {
+                        /* Test encoder connectivity before enabling */
+                        float test_angle;
+                        bool encoder1_ok = (mt6701_read_angle_deg(&encoder_motor1, &test_angle) == 0);
+
+                        if (!encoder1_ok) {
+                            printf("ERROR: Motor 1 encoder not detected!\n");
+                            printf("Check I2C2 connection and encoder power.\n");
+                            printf("Expected: Encoder on I2C2, address 0x06\n");
+                            break;
+                        }
+
+                        /* Configure and enable Motor 1 encoder */
+                        foc_encoder_config(motor[1], &encoder_motor1, 7, 0.0f, false);
+                        foc_encoder_enable(motor[1]);
+                        encoder_enabled[1] = true;
+                        printf("Motor 1 encoder ENABLED (closed-loop control)\n");
+                        printf("Note: Use 'c' to calibrate offset for optimal performance\n");
+                    }
+                    break;
+
+                case 'c':
+                case 'C':
+                    /* Calibrate Motor 1 encoder offset */
+                    printf("\n=== Motor 1 Encoder Calibration ===\n");
+
+                    /* Check if Motor 1 encoder is available */
+                    float test_angle;
+                    bool encoder1_present = (mt6701_read_angle_deg(&encoder_motor1, &test_angle) == 0);
+
+                    if (!encoder1_present) {
+                        printf("ERROR: Motor 1 encoder not detected!\n");
+                        printf("Check I2C2 connection, address 0x06\n");
+                        printf("========================\n\n");
+                        break;
+                    }
+
+                    printf("Aligning Motor 1 to electrical zero...\n");
+
+                    /* Stop any running velocity control */
+                    bool was_velocity_mode = velocity_mode;
+                    if (velocity_mode) {
+                        foc_velocity_disable(motor[1]);
+                        velocity_mode = false;
+                    }
+
+                    /* Apply 0° electrical angle at low power */
+                    pwm_set_vector_svpwm(pwm_dev[1], 0.0f, 20.0f);
+                    printf("Waiting for rotor alignment (1 second)...\n");
+                    HAL_Delay(1000);  /* Wait for rotor to settle */
+
+                    /* Read encoder position and configure */
+                    float offset1;
+                    if (mt6701_read_angle_deg(&encoder_motor1, &offset1) == 0) {
+                        printf("Motor 1 calibrated offset: %.1f degrees\n", offset1);
+                        foc_encoder_config(motor[1], &encoder_motor1, 7, offset1, false);
+                        if (encoder_enabled[1]) {
+                            foc_encoder_enable(motor[1]);
+                        }
+                        printf("SUCCESS: Calibration saved!\n");
+                    } else {
+                        printf("ERROR: Failed to read encoder during calibration\n");
+                    }
+
+                    /* Disable motor */
+                    pwm_disable(pwm_dev[1]);
+
+                    /* Restore velocity mode if it was active */
+                    if (was_velocity_mode) {
+                        foc_velocity_enable(motor[1], FOC_VELOCITY_OPEN_LOOP,
+                                          target_rpm, amplitude, 1000.0f, 7);
+                        velocity_mode = true;
+                    }
+
+                    printf("========================\n\n");
                     break;
 
                 case 'i':
                 case 'I':
-                    /* Print info */
-                    printf("\n=== Motor Control Info ===\n");
+                    /* Print info for Motor 1 */
+                    printf("\n=== Motor 1 Control Info ===\n");
                     printf("Mode: %s\n", velocity_mode ? "Velocity" : "Position");
                     printf("Amplitude: %d%%\n", (int)amplitude);
+                    printf("Encoder: %s\n", encoder_enabled[1] ? "ENABLED (closed-loop)" : "DISABLED (open-loop)");
 
                     if (velocity_mode) {
-                        float rpm0, rpm1;
-                        foc_velocity_get_current(motor[0], &rpm0);
+                        float rpm1;
                         foc_velocity_get_current(motor[1], &rpm1);
                         printf("Target RPM: %d\n", (int)target_rpm);
-                        printf("Motor 0 current RPM: %d\n", (int)rpm0);
-                        printf("Motor 1 current RPM: %d\n", (int)rpm1);
+                        printf("Current RPM: %d\n", (int)rpm1);
                     } else {
                         printf("Position angle: %d deg\n", (int)angle);
                     }
@@ -244,16 +321,27 @@ int main(void)
                     /* Print current sensing info */
                     float current_a = 0.0f;
                     foc_current_get(motor[1], &current_a);
-                    printf("Motor 1 current: %d mA (limit: %d A)\n",
+                    printf("Current: %d mA (limit: %d A)\n",
                            (int)(current_a * 1000),
                            (int)motor[1]->current_cfg.current_limit_a);
 
-                    /* Read encoder angles */
-                    float angle0, angle1;
-                    if (mt6701_read_angle_deg(&encoder_motor0, &angle0) == 0 &&
-                        mt6701_read_angle_deg(&encoder_motor1, &angle1) == 0) {
-                        printf("Encoder 0: %d deg\n", (int)angle0);
-                        printf("Encoder 1: %d deg\n", (int)angle1);
+                    /* Print encoder info */
+                    if (encoder_enabled[1]) {
+                        printf("\n--- Encoder Data (Closed-Loop) ---\n");
+                        float mech_angle, elec_angle, vel_rpm;
+                        if (foc_encoder_get(motor[1], &mech_angle, &elec_angle, &vel_rpm) == 0) {
+                            printf("Mechanical angle: %.1f°\n", mech_angle);
+                            printf("Electrical angle: %.1f°\n", elec_angle);
+                            printf("Measured velocity: %.0f RPM\n", vel_rpm);
+                        }
+                    } else {
+                        /* Try to read raw encoder angle */
+                        float angle1;
+                        if (mt6701_read_angle_deg(&encoder_motor1, &angle1) == 0) {
+                            printf("Encoder (raw): %.1f deg\n", angle1);
+                        } else {
+                            printf("Encoder: NOT DETECTED\n");
+                        }
                     }
                     printf("========================\n\n");
                     break;

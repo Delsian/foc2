@@ -36,6 +36,14 @@ static struct foc_motor foc_motor0 = {
 		.current_limit_a = 2.0f,  /* 2A default limit */
 	},
 	.current_data = {0},
+	.encoder_cfg = {
+		.encoder = NULL,
+		.enabled = false,
+		.mechanical_offset = 0.0f,
+		.pole_pairs = 7,
+		.invert_direction = false,
+	},
+	.encoder_data = {0},
 };
 
 static struct foc_motor foc_motor1 = {
@@ -60,6 +68,14 @@ static struct foc_motor foc_motor1 = {
 		.current_limit_a = 2.0f,  /* 2A default limit */
 	},
 	.current_data = {0},
+	.encoder_cfg = {
+		.encoder = NULL,
+		.enabled = false,
+		.mechanical_offset = 0.0f,
+		.pole_pairs = 7,
+		.invert_direction = false,
+	},
+	.encoder_data = {0},
 };
 
 int foc_velocity_enable(struct foc_motor *motor, enum foc_velocity_mode mode,
@@ -153,43 +169,51 @@ void foc_velocity_update(struct foc_motor *motor)
 		return;
 	}
 
-	/* Calculate RPM acceleration step per update */
-	rpm_step = cfg->acceleration / cfg->update_rate_hz;
+	/* If encoder is enabled, use measured velocity for closed-loop control */
+	if (motor->encoder_cfg.enabled) {
+		/* Use encoder-measured velocity */
+		motor->current_rpm = motor->encoder_data.velocity_rpm;
+		/* Use encoder-measured electrical angle for commutation */
+		motor->electrical_angle = motor->encoder_data.electrical_angle;
+	} else {
+		/* Open-loop: Calculate RPM acceleration step per update */
+		rpm_step = cfg->acceleration / cfg->update_rate_hz;
 
-	/* Ramp current RPM towards target with acceleration limit */
-	if (motor->current_rpm < cfg->target_rpm) {
-		motor->current_rpm += rpm_step;
-		if (motor->current_rpm > cfg->target_rpm) {
-			motor->current_rpm = cfg->target_rpm;
-		}
-	} else if (motor->current_rpm > cfg->target_rpm) {
-		motor->current_rpm -= rpm_step;
+		/* Ramp current RPM towards target with acceleration limit */
 		if (motor->current_rpm < cfg->target_rpm) {
-			motor->current_rpm = cfg->target_rpm;
+			motor->current_rpm += rpm_step;
+			if (motor->current_rpm > cfg->target_rpm) {
+				motor->current_rpm = cfg->target_rpm;
+			}
+		} else if (motor->current_rpm > cfg->target_rpm) {
+			motor->current_rpm -= rpm_step;
+			if (motor->current_rpm < cfg->target_rpm) {
+				motor->current_rpm = cfg->target_rpm;
+			}
 		}
-	}
 
-	/* Convert mechanical RPM to electrical RPM
-	 * Electrical RPM = Mechanical RPM × pole_pairs
-	 */
-	mechanical_rpm = motor->current_rpm;
-	electrical_rpm = mechanical_rpm * (float)cfg->pole_pairs;
+		/* Convert mechanical RPM to electrical RPM
+		 * Electrical RPM = Mechanical RPM × pole_pairs
+		 */
+		mechanical_rpm = motor->current_rpm;
+		electrical_rpm = mechanical_rpm * (float)cfg->pole_pairs;
 
-	/* Calculate angle increment per update period
-	 * angle_step = (electrical_rpm / 60) * (360 / update_rate_hz)
-	 *            = electrical_rpm * 6 / update_rate_hz
-	 */
-	angle_step_deg = (electrical_rpm * 360.0f) / (60.0f * cfg->update_rate_hz);
+		/* Calculate angle increment per update period
+		 * angle_step = (electrical_rpm / 60) * (360 / update_rate_hz)
+		 *            = electrical_rpm * 6 / update_rate_hz
+		 */
+		angle_step_deg = (electrical_rpm * 360.0f) / (60.0f * cfg->update_rate_hz);
 
-	/* Update electrical angle */
-	motor->electrical_angle += angle_step_deg;
+		/* Update electrical angle */
+		motor->electrical_angle += angle_step_deg;
 
-	/* Normalize angle to 0-360 degrees */
-	while (motor->electrical_angle >= 360.0f) {
-		motor->electrical_angle -= 360.0f;
-	}
-	while (motor->electrical_angle < 0.0f) {
-		motor->electrical_angle += 360.0f;
+		/* Normalize angle to 0-360 degrees */
+		while (motor->electrical_angle >= 360.0f) {
+			motor->electrical_angle -= 360.0f;
+		}
+		while (motor->electrical_angle < 0.0f) {
+			motor->electrical_angle += 360.0f;
+		}
 	}
 
 	/* Update PWM vector with current angle and amplitude using SVPWM
@@ -221,6 +245,10 @@ struct foc_motor *foc_get_motor(const char *name)
 
 void foc_task(void)
 {
+	/* Update encoder readings for all motors */
+	foc_encoder_update(&foc_motor0);
+	foc_encoder_update(&foc_motor1);
+
 	/* Update velocity control for all motors */
 	foc_velocity_update(&foc_motor0);
 	foc_velocity_update(&foc_motor1);
@@ -416,6 +444,180 @@ int foc_current_set_limit(struct foc_motor *motor, float limit_a)
 
 	motor->current_cfg.current_limit_a = limit_a;
 	printf("%s: Current limit set to %d A\n", motor->name, (int)limit_a);
+
+	return 0;
+}
+
+int foc_encoder_config(struct foc_motor *motor, mt6701_t *encoder,
+                       uint8_t pole_pairs, float mechanical_offset,
+                       bool invert_direction)
+{
+	if (!motor) {
+		printf("FOC: Motor not initialized\n");
+		return -1;
+	}
+
+	if (!encoder) {
+		printf("%s: Encoder pointer is NULL\n", motor->name);
+		return -1;
+	}
+
+	if (pole_pairs == 0) {
+		printf("%s: Invalid pole pairs (must be > 0)\n", motor->name);
+		return -1;
+	}
+
+	motor->encoder_cfg.encoder = encoder;
+	motor->encoder_cfg.pole_pairs = pole_pairs;
+	motor->encoder_cfg.mechanical_offset = mechanical_offset;
+	motor->encoder_cfg.invert_direction = invert_direction;
+
+	printf("%s: Encoder configured - poles=%u, offset=%d°, inverted=%d\n",
+	       motor->name, pole_pairs, (int)mechanical_offset, invert_direction);
+
+	return 0;
+}
+
+int foc_encoder_enable(struct foc_motor *motor)
+{
+	if (!motor) {
+		printf("FOC: Motor not initialized\n");
+		return -1;
+	}
+
+	if (!motor->encoder_cfg.encoder) {
+		printf("%s: Encoder not configured (call foc_encoder_config first)\n", motor->name);
+		return -1;
+	}
+
+	/* Initialize encoder data */
+	motor->encoder_data.mechanical_angle = 0.0f;
+	motor->encoder_data.electrical_angle = 0.0f;
+	motor->encoder_data.velocity_rpm = 0.0f;
+	motor->encoder_data.last_update_ms = HAL_GetTick();
+	motor->encoder_data.last_angle = 0.0f;
+
+	motor->encoder_cfg.enabled = true;
+
+	printf("%s: Encoder feedback enabled (closed-loop control)\n", motor->name);
+	return 0;
+}
+
+int foc_encoder_disable(struct foc_motor *motor)
+{
+	if (!motor) {
+		printf("FOC: Motor not initialized\n");
+		return -1;
+	}
+
+	motor->encoder_cfg.enabled = false;
+	printf("%s: Encoder feedback disabled (open-loop control)\n", motor->name);
+	return 0;
+}
+
+void foc_encoder_update(struct foc_motor *motor)
+{
+	struct foc_encoder_config *cfg;
+	struct foc_encoder_data *data;
+	float raw_angle_deg;
+	float delta_angle;
+	uint32_t now_ms, delta_time_ms;
+	float delta_time_s;
+
+	if (!motor || !motor->encoder_cfg.enabled || !motor->encoder_cfg.encoder) {
+		return;
+	}
+
+	cfg = &motor->encoder_cfg;
+	data = &motor->encoder_data;
+
+	/* Read encoder angle */
+	if (mt6701_read_angle_deg(cfg->encoder, &raw_angle_deg) != 0) {
+		/* Read failed - skip this update */
+		return;
+	}
+
+	/* Apply mechanical offset */
+	data->mechanical_angle = raw_angle_deg - cfg->mechanical_offset;
+
+	/* Normalize to 0-360 degrees */
+	while (data->mechanical_angle < 0.0f) {
+		data->mechanical_angle += 360.0f;
+	}
+	while (data->mechanical_angle >= 360.0f) {
+		data->mechanical_angle -= 360.0f;
+	}
+
+	/* Invert direction if configured */
+	if (cfg->invert_direction) {
+		data->mechanical_angle = 360.0f - data->mechanical_angle;
+	}
+
+	/* Calculate electrical angle
+	 * Electrical angle = (Mechanical angle × pole_pairs) mod 360°
+	 */
+	data->electrical_angle = data->mechanical_angle * (float)cfg->pole_pairs;
+	while (data->electrical_angle >= 360.0f) {
+		data->electrical_angle -= 360.0f;
+	}
+
+	/* Calculate velocity (RPM) from angle change
+	 * RPM = (delta_angle / 360) / (delta_time_s / 60)
+	 *     = (delta_angle * 60) / (360 * delta_time_s)
+	 *     = delta_angle / (6 * delta_time_s)
+	 */
+	now_ms = HAL_GetTick();
+	delta_time_ms = now_ms - data->last_update_ms;
+
+	if (delta_time_ms > 0) {
+		/* Calculate angle change (handle wrap-around) */
+		delta_angle = data->mechanical_angle - data->last_angle;
+
+		/* Handle wrap-around (e.g., from 359° to 1° is +2°, not -358°) */
+		if (delta_angle > 180.0f) {
+			delta_angle -= 360.0f;
+		} else if (delta_angle < -180.0f) {
+			delta_angle += 360.0f;
+		}
+
+		/* Convert to RPM */
+		delta_time_s = (float)delta_time_ms / 1000.0f;
+		data->velocity_rpm = (delta_angle / 360.0f) * (60.0f / delta_time_s);
+
+		/* Apply low-pass filter to smooth velocity (reduces encoder jitter noise)
+		 * velocity = 0.8 * old_velocity + 0.2 * new_velocity
+		 */
+		data->filtered_velocity = 0.8f * data->filtered_velocity + 0.2f * data->velocity_rpm;
+		data->velocity_rpm = data->filtered_velocity;
+	}
+
+	/* Update for next iteration */
+	data->last_angle = data->mechanical_angle;
+	data->last_update_ms = now_ms;
+}
+
+int foc_encoder_get(struct foc_motor *motor, float *mechanical_angle,
+                    float *electrical_angle, float *velocity_rpm)
+{
+	if (!motor) {
+		return -1;
+	}
+
+	if (!motor->encoder_cfg.enabled) {
+		return -1;
+	}
+
+	if (mechanical_angle) {
+		*mechanical_angle = motor->encoder_data.mechanical_angle;
+	}
+
+	if (electrical_angle) {
+		*electrical_angle = motor->encoder_data.electrical_angle;
+	}
+
+	if (velocity_rpm) {
+		*velocity_rpm = motor->encoder_data.velocity_rpm;
+	}
 
 	return 0;
 }
