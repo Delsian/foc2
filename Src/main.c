@@ -1,6 +1,5 @@
 #include "main.h"
 #include "usb_device.h"
-#include "drv/oled.h"
 #include "drv/i2c_scan.h"
 #include "drv/uart_in.h"
 #include "drv/adc_dma.h"
@@ -26,7 +25,7 @@ static struct foc_motor *motor[2];
 static mt6701_t encoder_motor0;
 static mt6701_t encoder_motor1;
 
-/* Motor control state variables (accessible to oled_task) */
+/* Motor control state variables */
 static float angle = 0.0f;
 static float target_rpm = 0.0f;
 static float amplitude = 5.0f;  /* Start with low amplitude to prevent overcurrent */
@@ -53,7 +52,6 @@ static void init(void)
 
     adc_dma_init(&hadc2, &hdma_adc2, &htim2);
 
-    oled_init(&hi2c1);
     uart_in_init(&huart2);
     can_init(&hfdcan1);
 
@@ -84,89 +82,19 @@ void set_event(MainCommands cmd)
 }
 
 /**
- * @brief OLED display update task
- * Updates OLED with current motor status information
- */
-static void oled_task(void)
-{
-    static char line_buf[16];
-    static bool velocity_mode_cached = false;
-    static float angle_cached = 0.0f;
-    static float amplitude_cached = 0.0f;
-    static float target_rpm_cached = 0.0f;
-    static float current_rpm0_cached = 0.0f;
-
-    /* Check if display needs update (values changed) */
-    bool needs_update = false;
-
-    if (velocity_mode != velocity_mode_cached ||
-        angle != angle_cached ||
-        amplitude != amplitude_cached ||
-        target_rpm != target_rpm_cached) {
-        needs_update = true;
-        velocity_mode_cached = velocity_mode;
-        angle_cached = angle;
-        amplitude_cached = amplitude;
-        target_rpm_cached = target_rpm;
-    }
-
-    if (velocity_mode) {
-        float rpm0;
-        foc_velocity_get_current(motor[0], &rpm0);
-        if (rpm0 != current_rpm0_cached) {
-            needs_update = true;
-            current_rpm0_cached = rpm0;
-        }
-    }
-
-    if (!needs_update) {
-        return;  /* No changes, skip update */
-    }
-
-    /* Line 0: Amplitude with custom formatting */
-    snprintf(line_buf, sizeof(line_buf), "%d", (int)amplitude);
-    oled_write(line_buf, 0, 0);
-
-    /* Line 2: Angle or RPM with icon */
-    if (velocity_mode) {
-        snprintf(line_buf, sizeof(line_buf), "R%d", (int)current_rpm0_cached);
-    } else {
-        snprintf(line_buf, sizeof(line_buf), "A%d", (int)angle);
-    }
-    oled_write(line_buf, 0, 2);
-
-    /* Line 4: Current (in units of 100mA) */
-    float current_a = 0.0f;
-    foc_current_get(motor[0], &current_a);
-    int current_ma = (int)(current_a * 1000.0f);  /* Convert to mA */
-    snprintf(line_buf, sizeof(line_buf), "%d", current_ma);
-    oled_write(line_buf, 0, 4);
-
-    oled_update();
-}
-
-/**
  * @brief Timer period elapsed callback
  * Called from TIM4 interrupt at 1kHz
  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    static uint16_t oled_counter = 0;
-
     if (htim->Instance == TIM4) {
         /* Set event to trigger PWM velocity control update at 1kHz */
         set_event(CMD_PWM);
-
-        /* Trigger OLED update at 10 Hz (every 100ms) */
-        if (++oled_counter >= 100) {
-            oled_counter = 0;
-            set_event(CMD_OLED);
-        }
     }
 }
 
 int main(void)
-{
++{
     static uint32_t cnt = 0;
 
     init();
@@ -195,9 +123,6 @@ int main(void)
 
     /* Enable current sensing for motor1 (after ADC DMA is started) */
     foc_current_enable(motor[1]);
-
-    /* Initial OLED update */
-    oled_task();
 
     while (1) {
         if (uart_in_available() > 0) {
@@ -388,11 +313,6 @@ int main(void)
         if (command & CMD_PWM) {
             command &= ~CMD_PWM;
             foc_task();
-        }
-
-        if (command & CMD_OLED) {
-            command &= ~CMD_OLED;
-            oled_task();
         }
     }
 }

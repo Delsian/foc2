@@ -41,7 +41,6 @@ set(MX_Application_Src
     Src/main.c
     Src/init.c
     Src/foc.c
-    Src/drv/oled.c
     Src/drv/i2c_scan.c
     Src/drv/uart_in.c
     Src/drv/adc_dma.c
