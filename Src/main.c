@@ -307,36 +307,11 @@ int main(void)
             NVIC_SystemReset();
         }
 
-        if (command & CMD_ADC) {
-            command &= ~CMD_ADC;
 
-            // Handle ADC command
-        }
 
         if (cnt++ >= 350000) {
             cnt = 0;
             HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
-
-            /* ADC testing */
-            //uint16_t adc_values[5];
-            //adc_dma_get_all_channels(adc_values, 5);
-            // printf("ADC Values: %u %u %u %u %u\n",
-            //        adc_values[0], adc_values[1],
-            //        adc_values[2], adc_values[3],
-            //        adc_values[4]);
-
-            /* MT6701 testing */
-            // float angle0, angle1;
-            // mt6701_read_angle_deg(&encoder_motor0, &angle0);
-            // mt6701_read_angle_deg(&encoder_motor1, &angle1);
-            // printf("Encoder angles: motor0=%d deg, motor1=%d deg\n", (int)angle0, (int)angle1);
-
-            /* Send CAN frame with ADC1 value */
-            // uint8_t can_data[2];
-            // can_data[0] = (adc_values[0] >> 8) & 0xFF;  /* ADC1 high byte */
-            // can_data[1] = adc_values[0] & 0xFF;         /* ADC1 low byte */
-            // can_transmit(0x100, can_data, 2);
-
         }
 
         if (command & CMD_PWM) {

@@ -375,16 +375,6 @@ void foc_current_update(struct foc_motor *motor)
 	voltage_a = (float)adc_dma_raw_to_mv(adc_raw_a) / 1000.0f;  /* Convert mV to V */
 	voltage_b = (float)adc_dma_raw_to_mv(adc_raw_b) / 1000.0f;
 
-	/* Debug: Print raw ADC values once per second * /
-	static uint32_t last_debug = 0;
-	uint32_t now = HAL_GetTick();
-	if (now - last_debug > 1000) {
-		printf("%s: ADC raw: A=%u B=%u, Voltage: A=%dmV B=%dmV, Offset=%dmV\n",
-		       motor->name, adc_raw_a, adc_raw_b,
-		       (int)(voltage_a * 1000), (int)(voltage_b * 1000),
-		       (int)(cfg->current_offset * 1000));
-		last_debug = now;
-	}*/
 
 	/* Convert voltage to current
 	 * Current = (Voltage - Offset) / Sensitivity
