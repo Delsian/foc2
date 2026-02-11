@@ -1,0 +1,70 @@
+{
+  "network": {
+    "bustype": "socketcan",
+    "channel": "can0",
+    "bitrate": 500000,
+    "nodeId": 16,
+    "syncCoid": 128,
+    "heartbeatProdTime": 1000,
+    "errorBehavior": {
+      "communicationError": 0,
+      "applicationError": 0
+    }
+  },
+  "dictionary": {
+    "0x1000": {
+      "name": "Device Type",
+      "struct": "Var",
+      "type": "uint32",
+      "access": "ro",
+      "defaultValue": 0
+    },
+    "0x1001": {
+      "name": "Error Register",
+      "struct": "Var",
+      "type": "uint8",
+      "access": "ro",
+      "defaultValue": 0
+    },
+    "0x1017": {
+      "name": "Producer Heartbeat Time",
+      "struct": "Var",
+      "type": "uint16",
+      "access": "rw",
+      "defaultValue": 1000
+    },
+    "0x6040": {
+      "name": "Controlword",
+      "struct": "Var",
+      "type": "uint16",
+      "access": "rw",
+      "defaultValue": 0
+    },
+    "0x6060": {
+      "name": "Modes of Operation",
+      "struct": "Var",
+      "type": "int8",
+      "access": "rw",
+      "defaultValue": 0,
+      "description": "1: Position Mode, 3: Velocity Mode"
+    },
+    "0x60FF": {
+      "name": "Target Velocity",
+      "struct": "Var",
+      "type": "int32",
+      "access": "rw",
+      "defaultValue": 0,
+      "unit": "rpm"
+    },
+    "0x2001": {
+      "name": "Amplitude",
+      "struct": "Var",
+      "type": "uint8",
+      "access": "rw",
+      "defaultValue": 5,
+      "unit": "%",
+      "min": 0,
+      "max": 100
+    }
+  }
+}

@@ -8,6 +8,7 @@
 #include "drv/mt6701.h"
 #include "foc.h"
 #include <stdio.h>
+#include "canopen.h"
 
 ADC_HandleTypeDef hadc2;
 DMA_HandleTypeDef hdma_adc2;
@@ -26,10 +27,10 @@ static struct foc_motor *motor[2];
 static mt6701_t encoder_motor1;
 
 /* Motor control state variables */
-static float angle = 0.0f;
-static float target_rpm = 0.0f;
-static float amplitude = 5.0f;  /* Start with low amplitude to prevent overcurrent */
-static bool velocity_mode = false;
+float angle = 0.0f;
+float target_rpm = 0.0f;
+float amplitude = 5.0f;  /* Start with low amplitude to prevent overcurrent */
+bool velocity_mode = false;
 static bool encoder_enabled[2] = {false, false};  /* Track encoder status per motor */
 
 static void init(void)
@@ -55,6 +56,7 @@ static void init(void)
 
     uart_in_init(&huart2);
     can_init(&hfdcan1);
+    canopen_init();
 
     /* Initialize MT6701 encoders */
     /* Only motor1 with encoder1 present for testing */
@@ -134,6 +136,8 @@ int main(void)
     foc_current_enable(motor[1]);
 
     while (1) {
+        canopen_process();
+
         if (uart_in_available() > 0) {
             uint8_t ch;
             uart_in_getchar(&ch);

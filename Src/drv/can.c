@@ -1,4 +1,6 @@
 #include "drv/can.h"
+#include "canopen.h"
+#include "main.h"
 #include <stdio.h>
 
 static FDCAN_HandleTypeDef *hcan = NULL;
@@ -98,7 +100,7 @@ void can_transmit(uint32_t id, uint8_t *data, uint8_t len)
     if (status != HAL_OK) {
         printf("CAN TX Error: %d\n", status);
     } else {
-        printf("CAN TX OK: ID=0x%lX DLC=%d\n", id, len);
+        printf("CAN TX OK: ID=0x%lX DLC=%d\n", (unsigned long)id, len);
     }
 }
 
@@ -109,12 +111,15 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
         uint8_t RxData[8];
 
         if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK) {
-            /* Print CAN packet information */
-            printf("CAN RX: ID=0x%03lX DLC=%lu Data=",
-                   RxHeader.Identifier,
-                   RxHeader.DataLength >> 16);
+            /* Pass to CANOpen stack */
+            canopen_handle_rx(RxHeader.Identifier, RxData, (RxHeader.DataLength >> 16));
 
-            uint8_t dlc = RxHeader.DataLength >> 16;
+            /* Print CAN packet information */
+            printf("CAN RX: ID=0x%03lX DLC=%lX Data=",
+                   (unsigned long)RxHeader.Identifier,
+                   (unsigned long)RxHeader.DataLength);
+
+            uint8_t dlc = RxHeader.DataLength;
             for (uint8_t i = 0; i < dlc; i++) {
                 printf("%02X ", RxData[i]);
             }
