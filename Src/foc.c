@@ -171,8 +171,25 @@ void foc_velocity_update(struct foc_motor *motor)
 
 	/* If encoder is enabled, use measured velocity for closed-loop control */
 	if (motor->encoder_cfg.enabled) {
-		/* Use encoder-measured velocity */
+		/* Use encoder-measured velocity for feedback */
 		motor->current_rpm = motor->encoder_data.velocity_rpm;
+
+		/* Simple PI velocity controller for closed-loop */
+		float error = cfg->target_rpm - motor->current_rpm;
+
+		/* Proportional gain: adjust amplitude based on error */
+		float kp = 0.1f;  /* Proportional gain */
+		float amplitude_adjustment = kp * error;
+
+		/* Clamp amplitude adjustment to prevent sudden changes */
+		if (amplitude_adjustment > 5.0f) amplitude_adjustment = 5.0f;
+		if (amplitude_adjustment < -5.0f) amplitude_adjustment = -5.0f;
+
+		/* Apply adjustment to amplitude (but don't go below 0 or above 100) */
+		motor->amplitude += amplitude_adjustment;
+		if (motor->amplitude > 100.0f) motor->amplitude = 100.0f;
+		if (motor->amplitude < 0.0f) motor->amplitude = 0.0f;
+
 		/* Use encoder-measured electrical angle for commutation */
 		motor->electrical_angle = motor->encoder_data.electrical_angle;
 	} else {

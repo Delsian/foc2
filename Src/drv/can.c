@@ -96,9 +96,15 @@ void can_transmit(uint32_t id, uint8_t *data, uint8_t len)
     TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
     TxHeader.MessageMarker = 0;
 
+    if (HAL_FDCAN_GetTxFifoFreeLevel(hcan) == 0) {
+        printf("CAN TX Queue Full! (No ACK?)\n");
+        return;
+    }
+
     HAL_StatusTypeDef status = HAL_FDCAN_AddMessageToTxFifoQ(hcan, &TxHeader, data);
     if (status != HAL_OK) {
-        printf("CAN TX Error: %d\n", status);
+        uint32_t error_code = HAL_FDCAN_GetError(hcan);
+        printf("CAN TX Error: %d, FDCAN Error: 0x%lX\n", status, (unsigned long)error_code);
     } else {
         printf("CAN TX OK: ID=0x%lX DLC=%d\n", (unsigned long)id, len);
     }

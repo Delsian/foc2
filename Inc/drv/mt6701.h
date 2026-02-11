@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#include "main.h"
+#include "stm32g4xx_hal.h"
 
 /**
  * @brief MT6701 magnetic angle encoder driver

@@ -45,17 +45,15 @@ int mt6701_read_angle_raw(mt6701_t *dev, uint16_t *angle)
 
     /* Read angle high byte (register 0x03) */
     ret = HAL_I2C_Mem_Read(dev->hi2c, dev->i2c_addr << 1, MT6701_REG_ANGLE_H,
-                          I2C_MEMADD_SIZE_8BIT, &data[0], 1, 100);
+                          I2C_MEMADD_SIZE_8BIT, &data[0], 1, 5);
     if (ret != HAL_OK) {
-        printf("%s: Failed to read angle high byte: %d\n", dev->name, ret);
         return -1;
     }
 
     /* Read angle low byte (register 0x04) */
     ret = HAL_I2C_Mem_Read(dev->hi2c, dev->i2c_addr << 1, MT6701_REG_ANGLE_L,
-                          I2C_MEMADD_SIZE_8BIT, &data[1], 1, 100);
+                          I2C_MEMADD_SIZE_8BIT, &data[1], 1, 5);
     if (ret != HAL_OK) {
-        printf("%s: Failed to read angle low byte: %d\n", dev->name, ret);
         return -1;
     }
 

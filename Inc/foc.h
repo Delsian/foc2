@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 
-#include "main.h"
+#include "stm32g4xx_hal.h"
 #include "drv/pwm.h"
 #include <stdbool.h>
 

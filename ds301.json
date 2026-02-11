@@ -65,6 +65,14 @@
       "unit": "%",
       "min": 0,
       "max": 100
+    },
+    "0x2002": {
+      "name": "Command Register",
+      "struct": "Var",
+      "type": "uint32",
+      "access": "rw",
+      "defaultValue": 0,
+      "description": "Write MainCommands enum value to trigger event"
     }
   }
 }

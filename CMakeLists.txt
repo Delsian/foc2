@@ -48,6 +48,7 @@ set(MX_Application_Src
     Src/drv/mt6701.c
     Src/drv/can.c
     Src/canopen.c
+    Src/uart_cmd.c
     Src/usb/usb_device.c
     Src/usb/usbd_conf.c
     Src/usb/usbd_desc.c

@@ -169,6 +169,14 @@ static void process_sdo(uint8_t *data, uint8_t len)
                 }
                 break;
 
+            case 0x2002: /* Command Register */
+                if (subindex == 0) {
+                    uint32_t cmd = (uint32_t)(data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24));
+                    set_event((MainCommands)cmd);
+                    send_sdo_download_response(index, subindex);
+                }
+                break;
+
             default:
                 send_sdo_abort(index, subindex, ABORT_NOT_EXISTS);
                 break;
